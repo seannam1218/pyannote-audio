@@ -377,7 +377,7 @@ def main():
             task = task_class(hparams, protocol=protocol, subset=subset)
 
             # suggest good learning rate
-            lr_finder = trainer.lr_find(task, min_lr=1e-7, max_lr=10, num_training=50)
+            lr_finder = trainer.lr_find(task, min_lr=1e-7, max_lr=10, num_training=1000)
             suggested_lr = lr_finder.suggestion()
 
             # initialize model with suggested learning rate

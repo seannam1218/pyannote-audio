@@ -126,8 +126,6 @@ class SpeechActivityDetection(BaseTask):
 
                 # TODO: remove when https://github.com/pytorch/pytorch/pull/38925 is released
                 num_samples = max(1, num_samples // self.hparams.batch_size)
-
-                return 5
                 return num_samples
 
         return Dataset()
