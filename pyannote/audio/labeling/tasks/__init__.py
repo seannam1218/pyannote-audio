@@ -3,7 +3,7 @@
 
 # The MIT License (MIT)
 
-# Copyright (c) 2018-2019 CNRS
+# Copyright (c) 2018-2020 CNRS
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -26,21 +26,22 @@
 # AUTHORS
 # Hervé BREDIN - http://herve.niderb.fr
 
-
 from .speech_activity_detection import SpeechActivityDetection
-from .speech_activity_detection import DomainAwareSpeechActivityDetection
-from .speech_activity_detection import DomainAdversarialSpeechActivityDetection
-
-from .overlap_detection import OverlapDetection
-from .speaker_change_detection import SpeakerChangeDetection
 from .domain_classification import DomainClassification
 
-from .resegmentation import Resegmentation
+# from .speech_activity_detection import DomainAwareSpeechActivityDetection
+# from .speech_activity_detection import DomainAdversarialSpeechActivityDetection
+
+# from .overlap_detection import OverlapDetection
+# from .speaker_change_detection import SpeakerChangeDetection
+
+# from .resegmentation import Resegmentation
 
 
 __all__ = [
     "SpeechActivityDetection",
-    "OverlapDetection",
-    "SpeakerChangeDetection",
-    "Resegmentation",
+    "DomainClassification",
+    #     "OverlapDetection",
+    #     "SpeakerChangeDetection",
+    #     "Resegmentation",
 ]

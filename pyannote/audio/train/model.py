@@ -50,71 +50,71 @@
 
 """
 
-from typing import Union
-from typing import List
-from typing import Text
-from typing import Tuple
-from typing import Dict
+from typing import Union, List, Text, Tuple, Dict, Optional, Callable
 
-try:
-    from typing import Literal
-except ImportError as e:
-    from typing_extensions import Literal
-from typing import Callable
 from pyannote.core import SlidingWindow
 from pyannote.core import SlidingWindowFeature
+from pyannote.core.utils.types import Alignment
 
-RESOLUTION_FRAME = "frame"
-RESOLUTION_CHUNK = "chunk"
-Resolution = Union[SlidingWindow, Literal[RESOLUTION_FRAME, RESOLUTION_CHUNK]]
+from pyannote.audio.train.task import BaseTask
+from pyannote.audio.train.task import Problem
+from pyannote.audio.train.task import Resolution
 
-ALIGNMENT_CENTER = "center"
-ALIGNMENT_STRICT = "strict"
-ALIGNMENT_LOOSE = "loose"
-Alignment = Literal[ALIGNMENT_CENTER, ALIGNMENT_STRICT, ALIGNMENT_LOOSE]
-
-from pyannote.audio.train.task import Task
 import numpy as np
 import pescador
 import torch
-from torch.nn import Module
+import torch.nn as nn
 from functools import partial
 
 
-class Model(Module):
+class Model(nn.Module):
     """Model
 
     A `Model` is nothing but a `torch.nn.Module` instance with a bunch of
     additional methods and properties specific to `pyannote.audio`.
 
-    It is expected to be instantiated with a unique `specifications` positional
-    argument describing the task addressed by the model, and a user-defined
-    number of keyword arguments describing the model architecture.
+    It is expected to be instantiated with a unique `task` positional argument 
+    describing the task addressed by the model, and a user-defined number of 
+    keyword arguments describing the model architecture.
 
     Parameters
     ----------
-    specifications : `dict`
-        Task specifications.
-    **architecture_params : `dict`
-        Architecture hyper-parameters.
+    task : BaseTask
+        Task addressed by the model.
+    **model_params : `dict`
+        Model hyper-parameters.
     """
 
-    def __init__(self, specifications: dict, **architecture_params):
+    def __init__(self, task: BaseTask, **model_hparams):
         super().__init__()
-        self.specifications = specifications
-        self.resolution_ = self.get_resolution(self.task, **architecture_params)
-        self.alignment_ = self.get_alignment(self.task, **architecture_params)
-        self.init(**architecture_params)
 
-    def init(self, **architecture_params):
+        # this hack is meant to avoid pytorch's submodule auto-registration loop
+        # https://discuss.pytorch.org/t/avoid-the-side-effect-of-parameter-auto-registering-in-module/7238
+        # BaseTask will register Model and Model will register Task
+
+        self._task: List[BaseTask] = []
+        self._task.append(task)
+
+        self.init(**model_hparams)
+
+    # see hack above
+    @property
+    def task(self) -> BaseTask:
+        return self._task[0]
+
+    def init(self, **model_hparams):
         """Initialize model architecture
 
-        This method is called by Model.__init__ after attributes
-        'specifications', 'resolution_', and 'alignment_' have been set.
+        This method is called by Model.__init__ after attribute 'task' is set:
+        this allows to access information about the task such as:
+           - the input feature dimension (self.task.feature_extraction.dimension)
+           - the list of output classes (self.task.classes)
+           - and many other details such self.task.problem, or 
+             self.task.resolution_{in|out}put
 
         Parameters
         ----------
-        **architecture_params : `dict`
+        **model_hparams : `dict`
             Architecture hyper-parameters
 
         """
@@ -206,7 +206,7 @@ class Model(Module):
                     parameter.requires_grad = True
 
     def forward(
-        self, sequences: torch.Tensor, **kwargs
+        self, sequences: torch.Tensor,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[Text, torch.Tensor]]]:
         """TODO
 
@@ -226,100 +226,65 @@ class Model(Module):
         raise NotImplementedError(msg)
 
     @property
-    def task(self) -> Task:
-        """Type of task addressed by the model
-
-        Shortcut for self.specifications['task']
-        """
-        return self.specifications["task"]
-
-    def get_resolution(self, task: Task, **architecture_params) -> Resolution:
-        """Get frame resolution
-
-        This method is called by `BatchGenerator` instances to determine how
-        target tensors should be built.
-
-        Depending on the task and the architecture, the output of a model will
-        have different resolution. The default behavior is to return
-        - `RESOLUTION_CHUNK` if the model returns just one output for the whole
-          input sequence
-        - `RESOLUTION_FRAME` if the model returns one output for each frame of
-          the input sequence
-
-        In case neither of these options is valid, this method needs to be
-        overriden to return a custom `SlidingWindow` instance.
-
-        Parameters
-        ----------
-        task : Task
-        **architecture_params
-            Parameters used for instantiating the model architecture.
-
-        Returns
-        -------
-        resolution : `Resolution`
-            - `RESOLUTION_CHUNK` if the model returns one single output for the
-              whole input sequence;
-            - `RESOLUTION_FRAME` if the model returns one output for each frame
-               of the input sequence.
-        """
-
-        if task.returns_sequence:
-            return RESOLUTION_FRAME
-
-        elif task.returns_vector:
-            return RESOLUTION_CHUNK
-
-        else:
-            # this should never happened
-            msg = f"{task} tasks are not supported."
-            raise NotImplementedError(msg)
-
-    @property
-    def resolution(self) -> Resolution:
+    def resolution(self) -> Union[Resolution, SlidingWindow]:
+        if not hasattr(self, "resolution_"):
+            self.resolution_ = self.get_resolution()
         return self.resolution_
 
-    def get_alignment(self, task: Task, **architecture_params) -> Alignment:
-        """Get frame alignment
+    def get_resolution(self) -> Union[Resolution, SlidingWindow]:
+        """Get resolution of model output
 
-        This method is called by `BatchGenerator` instances to dermine how
-        target tensors should be aligned with the output of the model.
-
-        Default behavior is to return 'center'. In most cases, you should not
-        need to worry about this but if you do, this method can be overriden to
-        return 'strict' or 'loose'.
-
-        Parameters
-        ----------
-        task : Task
-        architecture_params : dict
-            Architecture hyper-parameters.
+        This method is called by the train dataloader to determine how target
+        tensors should be built.
 
         Returns
         -------
-        alignment : `Alignment`
-            Target alignment. Must be one of 'center', 'strict', or 'loose'.
-            Always returns 'center'.
+        resolution: Resolution.CHUNK or SlidingWindow instance
+            If resolution is Resolution.CHUNK, it means that the model returns 
+            just one output for the whole input chunk.
+            If resolution is a SlidingWindow instances, it means that the model
+            returns a sequence of frames.
+        """
+        return self.guess_resolution()
+
+    def guess_resolution(self) -> Union[Resolution, SlidingWindow]:
+        """Guess output resolution
+        
+        Returns
+        -------
+        resolution: Resolution.CHUNK or SlidingWindow instance
+            Resolution.CHUNK if task.resolution_output is Resolution.CHUNK
+            task.feature_extractoin_sliding_window otherwise.
         """
 
-        return ALIGNMENT_CENTER
+        if self.task.resolution_output == Resolution.CHUNK:
+            return Resolution.CHUNK
+
+        return self.task.feature_extraction.sliding_window
 
     @property
     def alignment(self) -> Alignment:
+        if not hasattr(self, "alignment_"):
+            self.alignment_ = self.get_alignment()
         return self.alignment_
 
-    @property
-    def n_features(self) -> int:
-        """Number of input features
+    def get_alignment(self) -> Alignment:
+        """Get model output frame alignment
 
-        Shortcut for self.specifications['X']['dimension']
+        This method is called by the train dataloader to determine how target
+        tenshors should be aligned with the model output.
 
-        Returns
-        -------
-        n_features : `int`
-            Number of input features
+        In most cases, you should not need to worry about this but if you do, 
+        this method can be overriden to return 'strict' or 'loose'.
         """
-        return self.specifications["X"]["dimension"]
+        return self.guess_alignment()
+
+    def guess_alignment(self) -> Alignment:
+        """Guess model output frame alignment"""
+        return "center"
+
+    def get_dimension(self) -> int:
+        raise NotImplementedError()
 
     @property
     def dimension(self) -> int:
@@ -340,38 +305,11 @@ class Model(Module):
             If the model addresses a classification or regression task.
         """
 
-        if self.task.is_representation_learning:
-            msg = (
-                f"Class {self.__class__.__name__} needs to define "
-                f"'dimension' property."
-            )
-            raise NotImplementedError(msg)
+        # if self.task["problem"] == Problem.REPRESENTATION:
+        if self.task.problem == Problem.REPRESENTATION:
+            return self.get_dimension()
 
-        msg = f"{self.task} tasks do not define attribute 'dimension'."
-        raise AttributeError(msg)
-
-    @property
-    def classes(self) -> List[str]:
-        """Names of classes
-
-        Shortcut for self.specifications['y']['classes']
-
-        Returns
-        -------
-        classes : `list` of `str`
-            List of names of classes.
-
-
-        Raises
-        ------
-        AttributeError
-            If the model does not address a classification task.
-        """
-
-        if not self.task.is_representation_learning:
-            return self.specifications["y"]["classes"]
-
-        msg = f"{self.task} tasks do not define attribute 'classes'."
+        msg = f"'dimension' is only defined for representation learning."
         raise AttributeError(msg)
 
     def slide(
@@ -379,8 +317,8 @@ class Model(Module):
         features: SlidingWindowFeature,
         sliding_window: SlidingWindow,
         batch_size: int = 32,
-        device: torch.device = None,
-        skip_average: bool = None,
+        device: Union[Text, torch.device] = None,
+        skip_average: Optional[bool] = None,
         postprocess: Callable[[np.ndarray], np.ndarray] = None,
         return_intermediate=None,
         progress_hook=None,
@@ -418,7 +356,7 @@ class Model(Module):
         device = torch.device(device)
 
         if skip_average is None:
-            skip_average = (self.resolution == RESOLUTION_CHUNK) or (
+            skip_average = (self.resolution == Resolution.CHUNK) or (
                 return_intermediate is not None
             )
 
@@ -430,11 +368,11 @@ class Model(Module):
         resolution = self.resolution
 
         # model returns one vector per input frame
-        if resolution == RESOLUTION_FRAME:
+        if resolution == Resolution.FRAME:
             resolution = features.sliding_window
 
         # model returns one vector per input window
-        if resolution == RESOLUTION_CHUNK:
+        if resolution == Resolution.CHUNK:
             resolution = sliding_window
 
         support = features.extent

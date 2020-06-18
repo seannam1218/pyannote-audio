@@ -41,7 +41,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 import math
 from pyannote.core import SlidingWindow
-from pyannote.audio.train.task import Task
+from pyannote.core.utils.types import Alignment
 
 
 class SincConv1d(nn.Module):
@@ -233,53 +233,6 @@ class SincNet(nn.Module):
 
     """
 
-    @staticmethod
-    def get_alignment(task: Task, **kwargs):
-        """Get frame alignment"""
-        return "strict"
-
-    @staticmethod
-    def get_resolution(
-        task: Task,
-        sample_rate: int = 16000,
-        kernel_size: List[int] = [251, 5, 5],
-        stride: List[int] = [1, 1, 1],
-        max_pool: List[int] = [3, 3, 3],
-        **kwargs,
-    ) -> SlidingWindow:
-        """Get frame resolution
-
-        Parameters
-        ----------
-        task : Task
-        sample_rate : int, optional
-        kerne_size : list of int, optional
-        stride : list of int, optional
-        max_pool : list of int, optional
-
-        Returns
-        -------
-        resolution : SlidingWindow
-            Frame resolution.
-        """
-
-        # https://medium.com/mlreview/a-guide-to-receptive-field-arithmetic-for-convolutional-neural-networks-e0f514068807
-        padding = 0
-        receptive_field, jump, start = 1, 1, 0.5
-        for ks, s, mp in zip(kernel_size, stride, max_pool):
-            # increase due to (Sinc)Conv1d
-            receptive_field += (ks - 1) * jump
-            start += ((ks - 1) / 2 - padding) * jump
-            jump *= s
-            # increase in receptive field due to MaxPool1d
-            receptive_field += (mp - 1) * jump
-            start += ((mp - 1) / 2 - padding) * jump
-            jump *= mp
-
-        return SlidingWindow(
-            duration=receptive_field / sample_rate, step=jump / sample_rate, start=0.0
-        )
-
     def __init__(
         self,
         waveform_normalize=True,
@@ -437,12 +390,30 @@ class SincNet(nn.Module):
 
         return output.transpose(1, 2)
 
-    def dimension():
-        doc = "Output features dimension."
+    def get_alignment(self) -> Alignment:
+        return "strict"
 
-        def fget(self):
-            return self.out_channels[-1]
+    def get_resolution(self) -> SlidingWindow:
 
-        return locals()
+        # https://medium.com/mlreview/a-guide-to-receptive-field-arithmetic-for-convolutional-neural-networks-e0f514068807
+        padding = 0
+        receptive_field, jump, start = 1, 1, 0.5
+        for ks, s, mp in zip(self.kernel_size, self.stride, self.max_pool):
+            # increase due to (Sinc)Conv1d
+            receptive_field += (ks - 1) * jump
+            start += ((ks - 1) / 2 - padding) * jump
+            jump *= s
+            # increase in receptive field due to MaxPool1d
+            receptive_field += (mp - 1) * jump
+            start += ((mp - 1) / 2 - padding) * jump
+            jump *= mp
 
-    dimension = property(**dimension())
+        return SlidingWindow(
+            duration=receptive_field / self.sample_rate,
+            step=jump / self.sample_rate,
+            start=0.0,
+        )
+
+    @property
+    def dimension(self):
+        return self.out_channels[-1]

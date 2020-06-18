@@ -26,177 +26,231 @@
 # AUTHORS
 # Hervé BREDIN - http://herve.niderb.fr
 
-import torch
-import torch.nn.functional as F
-from pyannote.audio.train.trainer import Trainer
-import numpy as np
+from typing import Dict, Text, List
+import random
 
-from typing import Text
-from typing import Optional
-from pyannote.audio.embedding.generators import SpeechSegmentGenerator
-from pyannote.audio.features import FeatureExtraction
+from pyannote.audio.train.task import BaseTask
+from pyannote.audio.train.task import Problem
+from pyannote.audio.train.task import Resolution
+
+from argparse import Namespace
+
+from pyannote.core import Segment
+
 from pyannote.database import Protocol
+from pyannote.database import ProtocolFile
 from pyannote.database import Subset
-from pyannote.audio.features.wrapper import Wrappable
-from pyannote.audio.train.task import Task, TaskType, TaskOutput
+from torch.utils.data import IterableDataset
+
+import torch
+
+# import torch.nn.functional as F
+
+from collections import Counter
 
 
-class RepresentationLearning(Trainer):
-    """
+class BaseSpeakerEmbedding(BaseTask):
 
-    Parameters
-    ----------
-    duration : float, optional
-        Chunks duration, in seconds. Defaults to 1.
-    min_duration : float, optional
-        When provided, use chunks of random duration between `min_duration` and
-        `duration` for training. Defaults to using fixed duration chunks.
-    per_turn : int, optional
-        Number of chunks per speech turn. Defaults to 1.
-        If per_turn is greater than one, embeddings of the same speech turn
-        are averaged before classification. The intuition is that it might
-        help learn embeddings meant to be averaged/summed.
-    per_label : `int`, optional
-        Number of sequences per speaker in each batch. Defaults to 1.
-    per_fold : `int`, optional
-        Number of different speakers per batch. Defaults to 32.
-    per_epoch : `float`, optional
-        Force total audio duration per epoch, in days.
-        Defaults to total duration of protocol subset.
-    label_min_duration : `float`, optional
-        Remove speakers with less than that many seconds of speech.
-        Defaults to 0 (i.e. keep them all).
-    """
+    problem = Problem.REPRESENTATION
+    resolution_input = Resolution.FRAME
+    resolution_output = Resolution.CHUNK
 
     def __init__(
         self,
-        duration: float = 1.0,
-        min_duration: float = None,
-        per_turn: int = 1,
-        per_label: int = 1,
-        per_fold: Optional[int] = None,
-        per_epoch: Optional[float] = None,
-        label_min_duration: float = 0.0,
+        hparams: Namespace,
+        protocol: Protocol = None,
+        subset: Subset = "train",
+        files: List[ProtocolFile] = None,
     ):
 
-        super().__init__()
-        self.duration = duration
-        self.min_duration = min_duration
-        self.per_turn = per_turn
-        self.per_label = per_label
-        self.per_fold = per_fold
-        self.per_epoch = per_epoch
-        self.label_min_duration = label_min_duration
+        if "duration" not in hparams:
+            hparams.duration = 2.0
 
-    def get_batch_generator(
-        self,
-        feature_extraction: Wrappable,
-        protocol: Protocol,
-        subset: Subset = "train",
-        **kwargs
-    ) -> SpeechSegmentGenerator:
-        """Get batch generator
+        if "min_duration" not in hparams:
+            hparams.min_duration = 2.0
 
-        Parameters
-        ----------
-        feature_extraction : `FeatureExtraction`
-        protocol : `Protocol`
-        subset : {'train', 'development', 'test'}, optional
+        if "per_fold" not in hparams:
+            hparams.per_fold = 32
 
-        Returns
-        -------
-        generator : `SpeechSegmentGenerator`
-        """
+        if "per_label" not in hparams:
+            hparams.per_label = 1
 
-        return SpeechSegmentGenerator(
-            feature_extraction,
-            protocol,
-            subset=subset,
-            duration=self.duration,
-            min_duration=self.min_duration,
-            per_turn=self.per_turn,
-            per_label=self.per_label,
-            per_fold=self.per_fold,
-            per_epoch=self.per_epoch,
-            label_min_duration=self.label_min_duration,
+        if "per_turn" not in hparams:
+            hparams.per_turn = 1
+
+        if "label_min_duration" not in hparams:
+            hparams.label_min_duration = 0.0
+
+        hparams.batch_size = hparams.per_fold * hparams.per_label * hparams.per_turn
+
+        if protocol is not None:
+            protocol.preprocessors["metadata"] = self.get_metadata
+
+        super().__init__(hparams, protocol=protocol, subset=subset, files=files)
+
+    def get_metadata(self, file: ProtocolFile) -> Dict[Text, Dict]:
+
+        metadata = dict()
+
+        for label in file["annotation"].labels():
+            timeline = file["annotation"].label_timeline(label)
+            segments = [s for s in timeline if s.duration > self.hparams.duration]
+            if not segments:
+                continue
+            duration = sum(s.duration for s in segments)
+            metadata[label] = {"file": file, "segments": segments, "duration": duration}
+
+        return metadata
+
+    def get_classes(self):
+
+        total_duration = Counter()
+
+        for file in self.files:
+            duration = {
+                label: metadata["duration"]
+                for label, metadata in file["metadata"].items()
+            }
+            total_duration.update(duration)
+
+        return sorted(
+            label
+            for label, duration in total_duration.items()
+            if duration > self.hparams.label_min_duration
         )
 
-    @property
-    def max_distance(self):
-        if self.metric == "cosine":
-            return 2.0
-        elif self.metric == "angular":
-            return np.pi
-        elif self.metric == "euclidean":
-            # FIXME. incorrect if embedding are not unit-normalized
-            return 2.0
-        else:
-            msg = "'metric' must be one of {'euclidean', 'cosine', 'angular'}."
-            raise ValueError(msg)
+    def prepare_data(self):
 
-    def pdist(self, fX):
-        """Compute pdist à-la scipy.spatial.distance.pdist
+        self._dataloader_metadata: Dict[Text, List[Dict]] = dict()
 
-        Parameters
-        ----------
-        fX : (n, d) torch.Tensor
-            Embeddings.
+        for file in self.files:
+            for label, metadatum in file["metadata"].items():
+                if not label in self.classes:
+                    continue
+                self._dataloader_metadata.setdefault(label, []).append(metadatum)
 
-        Returns
-        -------
-        distances : (n * (n-1) / 2,) torch.Tensor
-            Condensed pairwise distance matrix
-        """
+    def train_dataset(self) -> IterableDataset:
+        class Dataset(IterableDataset):
+            def __iter__(dataset):
 
-        if self.metric == "euclidean":
-            return F.pdist(fX)
+                labels = list(self.classes)
 
-        elif self.metric in ("cosine", "angular"):
+                # batch_counter counts samples in current batch.
+                # as soon as it reaches batch_size, a new random duration is selected
+                # so that the next batch will use a different chunk duration
+                batch_counter = 0
+                batch_duration = self.hparams.min_duration + random.random() * (
+                    self.hparams.duration - self.hparams.min_duration
+                )
 
-            distance = 0.5 * torch.pow(F.pdist(F.normalize(fX)), 2)
-            if self.metric == "cosine":
-                return distance
+                while True:
 
-            return torch.acos(torch.clamp(1.0 - distance, -1 + 1e-12, 1 - 1e-12))
+                    # shuffle labels
+                    random.shuffle(labels)
 
-    def embed(self, batch):
-        """Extract embeddings (and aggregate per turn)
+                    for label in labels:
 
-        Parameters
-        ----------
-        batch : `dict`
-            ['X'] (batch_size, n_samples, n_features) `np.ndarray`
-            ['y'] (batch_size, ) `np.ndarray`
+                        # choose "per_label" files in which "label" occurs
+                        # NOTE: probability of choosing a file is proportional
+                        # to the duration of "label" in the file
+                        metadata = self._dataloader_metadata[label]
+                        metadata = random.choices(
+                            metadata,
+                            weights=[metadatum["duration"] for metadatum in metadata],
+                            k=self.hparams.per_label,
+                        )
 
-        Returns
-        -------
-        fX : (batch_size / per_turn, n_dimensions) `torch.Tensor`
-        y : (batch_size / per_turn, ) `np.ndarray`
-        """
+                        for metadatum in metadata:
+                            file = metadatum["file"]
 
-        X = torch.tensor(batch["X"], dtype=torch.float32, device=self.device_)
-        fX = self.model_(X)
+                            # choose one "label" segment
+                            # NOTE: probability of choosing a segment is
+                            # proportional to the duration of the segment
+                            segment, *_ = random.choices(
+                                metadatum["segments"],
+                                weights=[s.duration for s in metadatum["segments"]],
+                                k=1,
+                            )
 
-        if self.per_turn > 1:
+                            # choose "per_turn" chunks
+                            for _ in range(self.hparams.per_turn):
+                                start_time = random.uniform(
+                                    segment.start, segment.end - batch_duration
+                                )
+                                chunk = Segment(start_time, start_time + batch_duration)
+
+                                # extract features
+                                X = self.feature_extraction.crop(
+                                    file, chunk, mode="center", fixed=batch_duration,
+                                )
+
+                                # extract target
+                                y = self.classes.index(label)
+
+                                yield {"X": X, "y": y}
+
+                                # increment number of samples in current batch
+                                batch_counter += 1
+
+                                # as soon as the batch is complete, a new random
+                                # duration is selected so that the next batch will use
+                                # a different chunk duration
+                                if batch_counter == self.hparams.batch_size:
+                                    batch_counter = 0
+                                    batch_duration = self.hparams.min_duration + random.random() * (
+                                        self.hparams.duration
+                                        - self.hparams.min_duration
+                                    )
+
+            def __len__(dataset):
+                return 100
+
+        return Dataset()
+
+    def forward(self, chunks: torch.Tensor) -> torch.Tensor:
+        return self.model(chunks)
+
+    def training_step(self, batch, batch_idx):
+        X = batch["X"]
+        y = batch["y"]
+
+        fX = self(X)
+        if self.hparams.per_turn > 1:
+
             # TODO. add support for other aggregation functions, e.g. replacing
             # mean by product may encourage sparse representation
-            agg_fX = fX.view(self.per_fold * self.per_label, self.per_turn, -1).mean(
-                axis=1
-            )
+            fX = fX.view(
+                self.hparams.per_fold * self.hparams.per_label,
+                self.hparams.per_turn,
+                -1,
+            ).mean(axis=1)
+            y = y[:: self.hparams.per_turn]
 
-            agg_y = batch["y"][:: self.per_turn]
+        loss = self.loss(fX, y)
+        logs = {"loss": loss}
+        return {"loss": loss, "log": logs}
 
-        else:
-            agg_fX = fX
-            agg_y = batch["y"]
+    # def pdist(self, fX):
+    #     """Compute pdist à-la scipy.spatial.distance.pdist
 
-        return agg_fX, agg_y
+    #     Parameters
+    #     ----------
+    #     fX : (n, d) torch.Tensor
+    #         Embeddings.
 
-    def to_numpy(self, tensor):
-        """Convert torch.Tensor to numpy array"""
-        cpu = torch.device("cpu")
-        return tensor.detach().to(cpu).numpy()
+    #     Returns
+    #     -------
+    #     distances : (n * (n-1) / 2,) torch.Tensor
+    #         Condensed pairwise distance matrix
+    #     """
 
-    @property
-    def task(self):
-        return Task(type=TaskType.REPRESENTATION_LEARNING, output=TaskOutput.VECTOR)
+    #     if self.hparams.metric == "euclidean":
+    #         return F.pdist(fX)
+
+    #     elif self.hparams.metric in ("cosine", "angular"):
+
+    #         distance = 0.5 * torch.pow(F.pdist(F.normalize(fX)), 2)
+    #         if self.hparams.metric == "cosine":
+    #             return distance
+
+    #         return torch.acos(torch.clamp(1.0 - distance, -1 + 1e-12, 1 - 1e-12))

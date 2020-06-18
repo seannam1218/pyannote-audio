@@ -3,7 +3,7 @@
 
 # The MIT License (MIT)
 
-# Copyright (c) 2019 CNRS
+# Copyright (c) 2019-2020 CNRS
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -28,150 +28,88 @@
 
 """Domain classification"""
 
-from typing import Optional
-from typing import Text
+import random
+import math
 
-import numpy as np
-from .base import LabelingTask
-from .base import LabelingTaskGenerator
-from pyannote.audio.train.task import Task, TaskType, TaskOutput
-from pyannote.audio.features.wrapper import Wrappable
-from pyannote.database import Protocol
-from pyannote.database import Subset
-from pyannote.audio.train.model import Resolution
-from pyannote.audio.train.model import Alignment
+from torch.utils.data import IterableDataset
+
+from pyannote.core import Segment
+
+from pyannote.audio.train.task import BaseTask
+from pyannote.audio.train.task import Problem
+from pyannote.audio.train.task import Resolution
 
 
-class DomainClassificationGenerator(LabelingTaskGenerator):
-    """Batch generator for training domain classification
+class DomainClassification(BaseTask):
 
-    Parameters
-    ----------
-    task : Task
-        Task
-    feature_extraction : Wrappable
-        Describes how features should be obtained.
-        See pyannote.audio.features.wrapper.Wrapper documentation for details.
-    protocol : Protocol
-    subset : {'train', 'development', 'test'}, optional
-        Protocol and subset.
-    resolution : `pyannote.core.SlidingWindow`, optional
-        Override `feature_extraction.sliding_window`. This is useful for
-        models that include the feature extraction step (e.g. SincNet) and
-        therefore output a lower sample rate than that of the input.
-        Defaults to `feature_extraction.sliding_window`
-    alignment : {'center', 'loose', 'strict'}, optional
-        Which mode to use when cropping labels. This is useful for models that
-        include the feature extraction step (e.g. SincNet) and therefore use a
-        different cropping mode. Defaults to 'center'.
-    duration : float, optional
-        Duration of audio chunks. Defaults to 2s.
-    batch_size : int, optional
-        Batch size. Defaults to 32.
-    per_epoch : float, optional
-        Force total audio duration per epoch, in days.
-        Defaults to total duration of protocol subset.
-    domain : `str`, optional
-        Key to use as domain. Defaults to 'domain'.
-    """
+    problem = Problem.MULTI_CLASS_CLASSIFICATION
+    resolution_input = Resolution.FRAME
+    resolution_output = Resolution.CHUNK
 
-    def __init__(
-        self,
-        task: Task,
-        feature_extraction: Wrappable,
-        protocol: Protocol,
-        subset: Subset = "train",
-        resolution: Optional[Resolution] = None,
-        alignment: Optional[Alignment] = None,
-        duration: float = 2.0,
-        batch_size: int = 32,
-        per_epoch: float = None,
-        domain: Text = "domain",
-    ):
+    def get_classes(self):
+        return sorted(set(file[self.hparams.domain] for file in self.files))
 
-        self.domain = domain
+    def prepare_data(self):
 
-        super().__init__(
-            task,
-            feature_extraction,
-            protocol,
-            subset=subset,
-            resolution=resolution,
-            alignment=alignment,
-            duration=duration,
-            batch_size=batch_size,
-            per_epoch=per_epoch,
-            exhaustive=False,
+        for file in self.files:
+            file["_dataloader_duration"] = sum(
+                s.duration
+                for s in file["annotated"]
+                if s.duration > self.hparams.duration
+            )
+
+            file["_dataloader_target"] = self.classes.index(file[self.hparams.domain])
+
+        # estimate what an 'epoch' is
+        self._dataloader_duration = sum(
+            file["_dataloader_duration"] for file in self.files
         )
 
-    def initialize_y(self, current_file):
-        return self.file_labels_[self.domain].index(current_file[self.domain])
+    def train_dataset(self) -> IterableDataset:
+        class Dataset(IterableDataset):
+            def __iter__(dataset):
 
-    def crop_y(self, y, segment):
-        return y
+                while True:
 
-    @property
-    def specifications(self):
-        return {
-            "task": self.task,
-            "X": {"dimension": self.feature_extraction.dimension},
-            "y": {"classes": self.file_labels_[self.domain]},
-        }
+                    # select one file at random (with probability proportional to its annotated duration)
+                    file, *_ = random.choices(
+                        self.files,
+                        weights=[file["_dataloader_duration"] for file in self.files],
+                        k=1,
+                    )
 
+                    # select one annotated region at random (with probability proportional to its duration)
+                    segment, *_ = random.choices(
+                        file["annotated"],
+                        weights=[s.duration for s in file["annotated"]],
+                        k=1,
+                    )
 
-class DomainClassification(LabelingTask):
-    """Train domain classification
+                    # select one chunk at random (with uniform distribution)
+                    start_time = random.uniform(
+                        segment.start, segment.end - self.hparams.duration
+                    )
+                    chunk = Segment(start_time, start_time + self.hparams.duration)
 
-    Parameters
-    ----------
-    domain : `str`, optional
-        Key to use as domain. Defaults to 'domain'.
-    duration : float, optional
-        Duration of sub-sequences. Defaults to 3.2s.
-    batch_size : int, optional
-        Batch size. Defaults to 32.
-    per_epoch : float, optional
-        Total audio duration per epoch, in days.
-        Defaults to one day (1).
-    """
+                    # extract features
+                    X = self.feature_extraction.crop(
+                        file, chunk, mode="center", fixed=self.hparams.duration
+                    )
 
-    def __init__(self, domain="domain", **kwargs):
-        super().__init__(**kwargs)
-        self.domain = domain
+                    # extract target
+                    y = file["_dataloader_target"]
 
-    def get_batch_generator(
-        self,
-        feature_extraction: Wrappable,
-        protocol: Protocol,
-        subset: Subset = "train",
-        **kwargs
-    ) -> DomainClassificationGenerator:
-        """Get batch generator for domain classification
+                    # yield batch
+                    yield {"X": X, "y": y}
 
-        Parameters
-        ----------
-        feature_extraction : Wrappable
-            Feature extraction.
-        protocol : Protocol
-        subset : {'train', 'development', 'test'}, optional
-            Protocol and subset used for batch generation.
+            def __len__(dataset):
+                num_samples = math.ceil(
+                    self._dataloader_duration / self.hparams.duration
+                )
 
-        Returns
-        -------
-        batch_generator : `DomainClassificationGenerator`
-            Batch generator
-        """
-        return DomainClassificationGenerator(
-            self.task,
-            feature_extraction,
-            protocol,
-            subset=subset,
-            domain=self.domain,
-            duration=self.duration,
-            per_epoch=self.per_epoch,
-            batch_size=self.batch_size,
-        )
+                # TODO: remove when https://github.com/pytorch/pytorch/pull/38925 is released
+                num_samples = max(1, num_samples // self.hparams.batch_size)
 
-    @property
-    def task(self):
-        return Task(type=TaskType.MULTI_CLASS_CLASSIFICATION, output=TaskOutput.VECTOR)
+                return num_samples
+
+        return Dataset()

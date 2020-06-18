@@ -42,214 +42,228 @@ Example
 ...                                 output=TaskOutput.SEQUENCE)
 """
 
+
+from typing import Optional, List, Dict, Text, Type, Union
+from typing import TYPE_CHECKING
+
+try:
+    from typing import Literal
+except ImportError:
+    from typing_extensions import Literal
+
 from enum import Enum
-from typing import Union
-from typing import NamedTuple
-from typing import Callable
+
+from pyannote.database import Protocol
+from pyannote.database import ProtocolFile
+from pyannote.database import Subset
+from torch.utils.data import DataLoader
+from torch.utils.data import IterableDataset
+
+import pytorch_lightning as pl
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from argparse import Namespace
+
+from pyannote.core.utils.helper import get_class_by_name
 
 
-class TaskType(Enum):
-    """Type of machine learning task
+class Resolution(Enum):
+    FRAME = "frame"
+    CHUNK = "chunk"
 
-    Attributes
-    ----------
-    MULTI_CLASS_CLASSIFICATION
-        multi-class classification
-    MULTI_LABEL_CLASSIFICATION
-        multi-label classification
-    REGRESSION
-        regression
-    REPRESENTATION_LEARNING
-        representation learning
+
+class Problem(Enum):
+    """Type of machine learning problem
+    
+    Used to automatically suggest reasonable default final activation layer
+    and loss function.
     """
 
-    MULTI_CLASS_CLASSIFICATION = 0
-    MULTI_LABEL_CLASSIFICATION = 1
-    REGRESSION = 2
-    REPRESENTATION_LEARNING = 3
+    MULTI_CLASS_CLASSIFICATION = "classification"
+    MULTI_LABEL_CLASSIFICATION = "multi-label classification"
+    REGRESSION = "regression"
+    REPRESENTATION = "representation"
 
 
-class TaskOutput(Enum):
-    """Expected output
+class BaseTask(pl.LightningModule):
+    def __init__(
+        self,
+        hparams: Namespace,
+        protocol: Protocol = None,
+        subset: Subset = "train",
+        files: List[ProtocolFile] = None,
+    ):
+        super().__init__()
 
-    Attributes
-    ----------
-    SEQUENCE
-        A sequence of vector is expected.
-    VECTOR
-        A single vector is expected.
-    """
+        self.hparams = hparams
 
-    SEQUENCE = 0
-    VECTOR = 1
+        # FEATURE EXTRACTION
+        FeatureExtractionClass = get_class_by_name(
+            self.hparams.feature_extraction["name"]
+        )
+        self.feature_extraction = FeatureExtractionClass(
+            **self.hparams.feature_extraction["params"]
+        )
 
+        # TRAINING DATA
+        if files is not None:
+            self.files = files
+        elif protocol is not None:
+            self.protocol = protocol
+            self.subset = subset
 
-class Task(NamedTuple):
-    type: TaskType
-    output: TaskOutput
+        # MODEL
+        ArchitectureClass = get_class_by_name(self.hparams.architecture["name"])
+        architecture_params = self.hparams.architecture["params"]
+        self.model = ArchitectureClass(self, **architecture_params)
 
-    @classmethod
-    def from_str(cls, representation: str):
-        task_output, task_type = representation.split(" ", 1)
+    @property
+    def files(self):
+        if not hasattr(self, "files_"):
+            # load protocol files once and for all
+            if self.protocol is None:
+                msg = f"No training protocol available. Please provide one."
+                raise ValueError(msg)
+            self.files_ = list(getattr(self.protocol, self.subset)())
 
-        if task_output == "frame-wise":
-            task_output = TaskOutput.SEQUENCE
+        return self.files_
 
-        elif task_output == "chunk-wise":
-            task_output = TaskOutput.VECTOR
+    @files.setter
+    def files(self, files: List[ProtocolFile]):
+        self.files_ = files
+
+    def prepare_data(self):
+        raise NotImplementedError("")
+
+    def train_dataset(self) -> IterableDataset:
+        raise NotImplementedError("")
+
+    def train_dataloader(self) -> DataLoader:
+        return DataLoader(self.train_dataset(), batch_size=self.hparams.batch_size,)
+
+    # =========================================================================
+    # CLASSES
+    # =========================================================================
+
+    @property
+    def classes(self) -> List[Text]:
+        """List of classes
+        
+        Used to automatically infer the output dimension of the model
+        """
+        if "classes" not in self.hparams:
+            self.hparams.classes = self.get_classes()
+        return self.hparams.classes
+
+    def get_classes(self) -> List[Text]:
+        """Compute list of classes
+        
+        Called when classes depend on the training data (e.g. for domain 
+        classification experiments where we do not know in advance what
+        domains are)
+        """
+        msg = f"Class {self.__class__.__name__} must define a 'get_classes' method."
+        raise NotImplementedError(msg)
+
+    # =========================================================================
+    # LOSS FUNCTION
+    # =========================================================================
+
+    def guess_activation(self):
+
+        if self.problem == Problem.MULTI_CLASS_CLASSIFICATION:
+            return nn.LogSoftmax(dim=-1)
+
+        elif self.problem == Problem.MULTI_LABEL_CLASSIFICATION:
+            return nn.Sigmoid()
+
+        elif self.problem == Problem.REGRESSION:
+            return nn.Identity()
+
+        elif self.problem == Problem.REPRESENTATION:
+            return nn.Identity()
 
         else:
-            msg = f'"{task_output}" task output is not supported.'
+            msg = f"Unknown default activation for '{self.problem}' problems."
             raise NotImplementedError(msg)
 
-        if task_type == "multi-class classification":
-            task_type = TaskType.MULTI_CLASS_CLASSIFICATION
-
-        elif task_type == "multi-label classification":
-            task_type = TaskType.MULTI_LABEL_CLASSIFICATION
-
-        elif task_type == "regression":
-            task_type = TaskType.REGRESSION
-
-        elif task_type == "representation learning":
-            task_type = TaskType.REPRESENTATION_LEARNING
-
-        else:
-            msg = f'"{task_type}" task type is not supported.'
-            raise NotImplementedError(msg)
-
-        return cls(type=task_type, output=task_output)
-
-    def __str__(self) -> str:
-        """String representation"""
-
-        if self.returns_sequence:
-            name = "frame-wise"
-
-        elif self.returns_vector:
-            name = "chunk-wise"
-
-        else:
-            msg = (
-                "string representation (__str__) is not implemented "
-                "for this task output."
-            )
-            raise NotImplementedError(msg)
-
-        if self.is_multiclass_classification:
-            name = f"{name} multi-class classification"
-
-        elif self.is_multilabel_classification:
-            name = f"{name} multi-label classification"
-
-        elif self.is_regression:
-            name = f"{name} regression"
-
-        elif self.is_representation_learning:
-            name = f"{name} representation learning"
-
-        else:
-            msg = (
-                "string representation (__str__) is not implemented "
-                "for this type of task."
-            )
-            raise NotImplementedError(msg)
-
-        return name
+    def get_activation(self):
+        return self.guess_activation()
 
     @property
-    def returns_sequence(self) -> bool:
-        """Is the output expected to be a sequence?
+    def activation(self):
+        if not hasattr(self, "activation_"):
+            self.activation_ = self.get_activation()
+        return self.activation_
 
-        Returns
-        -------
-        `bool`
-            `True` if the task output is a sequence, `False` otherwise.
-        """
-        return self.output == TaskOutput.SEQUENCE
+    def guess_loss(self):
 
-    @property
-    def returns_vector(self) -> bool:
-        """Is the output expected to be a single vector?
+        if (
+            self.problem == Problem.MULTI_CLASS_CLASSIFICATION
+            and self.resolution_output == Resolution.FRAME
+        ):
 
-        Returns
-        -------
-        `bool`
-            `True` if the task output is a single vector, `False` otherwise.
-        """
-        return self.output == TaskOutput.VECTOR
+            def loss(
+                y_pred: torch.Tensor, y: torch.Tensor, weight=None
+            ) -> torch.Tensor:
+                return F.nll_loss(
+                    y_pred.view((-1, len(self.classes))),
+                    y.view((-1,)),
+                    weight=weight,
+                    reduction="mean",
+                )
 
-    @property
-    def is_multiclass_classification(self) -> bool:
-        """Is it multi-class classification?
+            return loss
 
-        Returns
-        -------
-        `bool`
-            `True` if the task is multi-class classification
-        """
-        return self.type == TaskType.MULTI_CLASS_CLASSIFICATION
+        if (
+            self.problem == Problem.MULTI_CLASS_CLASSIFICATION
+            and self.resolution_output == Resolution.CHUNK
+        ):
 
-    @property
-    def is_multilabel_classification(self) -> bool:
-        """Is it multi-label classification?
+            def loss(
+                y_pred: torch.Tensor, y: torch.Tensor, weight=None
+            ) -> torch.Tensor:
+                return F.nll_loss(y_pred, y, weight=weight, reduction="mean",)
 
-        Returns
-        -------
-        `bool`
-            `True` if the task is multi-label classification
-        """
-        return self.type == TaskType.MULTI_LABEL_CLASSIFICATION
+            return loss
 
-    @property
-    def is_regression(self) -> bool:
-        """Is it regression?
+        msg = (
+            f"Cannot guess loss function for {self.__class__.__name__}. "
+            f"Please implement {self.__class__.__name__}.get_loss method."
+        )
+        raise NotImplementedError(msg)
 
-        Returns
-        -------
-        `bool`
-            `True` if the task is regression
-        """
-        return self.type == TaskType.REGRESSION
+    def get_loss(self):
+        return self.guess_loss()
 
     @property
-    def is_representation_learning(self) -> bool:
-        """Is it representation learning?
+    def loss(self):
+        if not hasattr(self, "loss_"):
+            self.loss_ = self.get_loss()
+        return self.loss_
 
-        Returns
-        -------
-        `bool`
-            `True` if the task is representation learning
-        """
-        return self.type == TaskType.REPRESENTATION_LEARNING
+    # =========================================================================
+    # TRAINING LOOP
+    # =========================================================================
 
-    @property
-    def default_activation(self):
-        """Default final activation
+    def configure_optimizers(self):
 
-        Returns
-        -------
-        `torch.nn.LogSoftmax(dim=-1)` for multi-class classification
-        `torch.nn.Sigmoid()` for multi-label classification
-        `torch.nn.Identity()` for regression
+        OptimizerClass = get_class_by_name(self.hparams.optimizer["name"])
+        optimizer_params = self.hparams.optimizer.get("params", dict())
+        optimizer = OptimizerClass(
+            self.parameters(), lr=self.hparams.learning_rate, **optimizer_params,
+        )
 
-        Raises
-        ------
-        NotImplementedError
-            If the default activation cannot be guessed.
-        """
+        return optimizer
 
-        import torch.nn
+    def forward(self, chunks: torch.Tensor) -> torch.Tensor:
+        return self.activation(self.model(chunks))
 
-        if self.is_multiclass_classification:
-            return torch.nn.LogSoftmax(dim=-1)
-
-        elif self.is_multilabel_classification:
-            return torch.nn.Sigmoid()
-
-        elif self.is_regression:
-            return torch.nn.Identity()
-
-        else:
-            msg = f"Unknown default activation for {self} task."
-            raise NotImplementedError(msg)
+    def training_step(self, batch, batch_idx):
+        X = batch["X"]
+        y = batch["y"]
+        y_pred = self(X)
+        loss = self.loss(y_pred, y)
+        logs = {"loss": loss}
+        return {"loss": loss, "log": logs}
