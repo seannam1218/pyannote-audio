@@ -49,6 +49,86 @@ import torch
 from collections import Counter
 
 
+class Dataset(IterableDataset):
+    def __init__(self, task: BaseSpeakerEmbedding):
+        super().__init__()
+        self.task = task
+
+    def __iter__(self):
+
+        labels = list(self.task.classes)
+
+        # batch_counter counts samples in current batch.
+        # as soon as it reaches batch_size, a new random duration is selected
+        # so that the next batch will use a different chunk duration
+        batch_counter = 0
+        batch_duration = self.task.hparams.min_duration + random.random() * (
+            self.task.hparams.duration - self.task.hparams.min_duration
+        )
+
+        while True:
+
+            # shuffle labels
+            random.shuffle(labels)
+
+            for label in labels:
+
+                # choose "per_label" files in which "label" occurs
+                # NOTE: probability of choosing a file is proportional
+                # to the duration of "label" in the file
+                metadata = self.task._dataloader_metadata[label]
+                metadata = random.choices(
+                    metadata,
+                    weights=[metadatum["duration"] for metadatum in metadata],
+                    k=self.task.hparams.per_label,
+                )
+
+                for metadatum in metadata:
+                    file = metadatum["file"]
+
+                    # choose one "label" segment
+                    # NOTE: probability of choosing a segment is
+                    # proportional to the duration of the segment
+                    segment, *_ = random.choices(
+                        metadatum["segments"],
+                        weights=[s.duration for s in metadatum["segments"]],
+                        k=1,
+                    )
+
+                    # choose "per_turn" chunks
+                    for _ in range(self.task.hparams.per_turn):
+                        start_time = random.uniform(
+                            segment.start, segment.end - batch_duration
+                        )
+                        chunk = Segment(start_time, start_time + batch_duration)
+
+                        # extract features
+                        X = self.task.feature_extraction.crop(
+                            file, chunk, mode="center", fixed=batch_duration,
+                        )
+
+                        # extract target
+                        y = self.task.classes.index(label)
+
+                        yield {"X": X, "y": y}
+
+                        # increment number of samples in current batch
+                        batch_counter += 1
+
+                        # as soon as the batch is complete, a new random
+                        # duration is selected so that the next batch will use
+                        # a different chunk duration
+                        if batch_counter == self.task.hparams.batch_size:
+                            batch_counter = 0
+                            batch_duration = self.task.hparams.min_duration + random.random() * (
+                                self.task.hparams.duration
+                                - self.task.hparams.min_duration
+                            )
+
+    def __len__(self):
+        return 100
+
+
 class BaseSpeakerEmbedding(BaseTask):
 
     problem = Problem.REPRESENTATION
@@ -130,82 +210,7 @@ class BaseSpeakerEmbedding(BaseTask):
                 self._dataloader_metadata.setdefault(label, []).append(metadatum)
 
     def train_dataset(self) -> IterableDataset:
-        class Dataset(IterableDataset):
-            def __iter__(dataset):
-
-                labels = list(self.classes)
-
-                # batch_counter counts samples in current batch.
-                # as soon as it reaches batch_size, a new random duration is selected
-                # so that the next batch will use a different chunk duration
-                batch_counter = 0
-                batch_duration = self.hparams.min_duration + random.random() * (
-                    self.hparams.duration - self.hparams.min_duration
-                )
-
-                while True:
-
-                    # shuffle labels
-                    random.shuffle(labels)
-
-                    for label in labels:
-
-                        # choose "per_label" files in which "label" occurs
-                        # NOTE: probability of choosing a file is proportional
-                        # to the duration of "label" in the file
-                        metadata = self._dataloader_metadata[label]
-                        metadata = random.choices(
-                            metadata,
-                            weights=[metadatum["duration"] for metadatum in metadata],
-                            k=self.hparams.per_label,
-                        )
-
-                        for metadatum in metadata:
-                            file = metadatum["file"]
-
-                            # choose one "label" segment
-                            # NOTE: probability of choosing a segment is
-                            # proportional to the duration of the segment
-                            segment, *_ = random.choices(
-                                metadatum["segments"],
-                                weights=[s.duration for s in metadatum["segments"]],
-                                k=1,
-                            )
-
-                            # choose "per_turn" chunks
-                            for _ in range(self.hparams.per_turn):
-                                start_time = random.uniform(
-                                    segment.start, segment.end - batch_duration
-                                )
-                                chunk = Segment(start_time, start_time + batch_duration)
-
-                                # extract features
-                                X = self.feature_extraction.crop(
-                                    file, chunk, mode="center", fixed=batch_duration,
-                                )
-
-                                # extract target
-                                y = self.classes.index(label)
-
-                                yield {"X": X, "y": y}
-
-                                # increment number of samples in current batch
-                                batch_counter += 1
-
-                                # as soon as the batch is complete, a new random
-                                # duration is selected so that the next batch will use
-                                # a different chunk duration
-                                if batch_counter == self.hparams.batch_size:
-                                    batch_counter = 0
-                                    batch_duration = self.hparams.min_duration + random.random() * (
-                                        self.hparams.duration
-                                        - self.hparams.min_duration
-                                    )
-
-            def __len__(dataset):
-                return 100
-
-        return Dataset()
+        return Dataset(self)
 
     def forward(self, chunks: torch.Tensor) -> torch.Tensor:
         return self.model(chunks)

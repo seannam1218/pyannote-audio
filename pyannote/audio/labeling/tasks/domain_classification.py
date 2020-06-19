@@ -40,6 +40,55 @@ from pyannote.audio.train.task import Problem
 from pyannote.audio.train.task import Resolution
 
 
+class Dataset(IterableDataset):
+    def __init__(self, task: "DomainClassification"):
+        super().__init__()
+        self.task = task
+
+    def __iter__(self):
+
+        while True:
+
+            # select one file at random (with probability proportional to its annotated duration)
+            file, *_ = random.choices(
+                self.task.files,
+                weights=[file["_dataloader_duration"] for file in self.task.files],
+                k=1,
+            )
+
+            # select one annotated region at random (with probability proportional to its duration)
+            segment, *_ = random.choices(
+                file["annotated"], weights=[s.duration for s in file["annotated"]], k=1,
+            )
+
+            # select one chunk at random (with uniform distribution)
+            start_time = random.uniform(
+                segment.start, segment.end - self.task.hparams.duration
+            )
+            chunk = Segment(start_time, start_time + self.task.hparams.duration)
+
+            # extract features
+            X = self.task.feature_extraction.crop(
+                file, chunk, mode="center", fixed=self.task.hparams.duration
+            )
+
+            # extract target
+            y = file["_dataloader_target"]
+
+            # yield batch
+            yield {"X": X, "y": y}
+
+    def __len__(self):
+        num_samples = math.ceil(
+            self.task._dataloader_duration / self.task.hparams.duration
+        )
+
+        # TODO: remove when https://github.com/pytorch/pytorch/pull/38925 is released
+        num_samples = max(1, num_samples // self.task.hparams.batch_size)
+
+        return num_samples
+
+
 class DomainClassification(BaseTask):
 
     problem = Problem.MULTI_CLASS_CLASSIFICATION
@@ -66,50 +115,4 @@ class DomainClassification(BaseTask):
         )
 
     def train_dataset(self) -> IterableDataset:
-        class Dataset(IterableDataset):
-            def __iter__(dataset):
-
-                while True:
-
-                    # select one file at random (with probability proportional to its annotated duration)
-                    file, *_ = random.choices(
-                        self.files,
-                        weights=[file["_dataloader_duration"] for file in self.files],
-                        k=1,
-                    )
-
-                    # select one annotated region at random (with probability proportional to its duration)
-                    segment, *_ = random.choices(
-                        file["annotated"],
-                        weights=[s.duration for s in file["annotated"]],
-                        k=1,
-                    )
-
-                    # select one chunk at random (with uniform distribution)
-                    start_time = random.uniform(
-                        segment.start, segment.end - self.hparams.duration
-                    )
-                    chunk = Segment(start_time, start_time + self.hparams.duration)
-
-                    # extract features
-                    X = self.feature_extraction.crop(
-                        file, chunk, mode="center", fixed=self.hparams.duration
-                    )
-
-                    # extract target
-                    y = file["_dataloader_target"]
-
-                    # yield batch
-                    yield {"X": X, "y": y}
-
-            def __len__(dataset):
-                num_samples = math.ceil(
-                    self._dataloader_duration / self.hparams.duration
-                )
-
-                # TODO: remove when https://github.com/pytorch/pytorch/pull/38925 is released
-                num_samples = max(1, num_samples // self.hparams.batch_size)
-
-                return num_samples
-
-        return Dataset()
+        return Dataset(self)
