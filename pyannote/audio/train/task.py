@@ -115,7 +115,7 @@ class BaseTask(pl.LightningModule):
 
         # MODEL
         ArchitectureClass = get_class_by_name(self.hparams.architecture["name"])
-        architecture_params = self.hparams.architecture["params"]
+        architecture_params = self.hparams.architecture.get("params", dict())
         self.model = ArchitectureClass(self, **architecture_params)
 
     @property
