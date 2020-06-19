@@ -65,7 +65,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from argparse import Namespace
 
+import math
+import numpy as np
 from pyannote.core.utils.helper import get_class_by_name
+from pyannote.core import Segment
 
 
 class Resolution(Enum):
@@ -117,6 +120,27 @@ class BaseTask(pl.LightningModule):
         ArchitectureClass = get_class_by_name(self.hparams.architecture["name"])
         architecture_params = self.hparams.architecture.get("params", dict())
         self.model = ArchitectureClass(self, **architecture_params)
+
+        # EXAMPLE INPUT ARRAY (used by Pytorch Lightning to display in and out
+        # sizes of each layer, for a batch of size 5)
+        if "duration" in self.hparams:
+            duration = self.hparams.duration
+            context = self.feature_extraction.get_context_duration()
+            num_samples = math.ceil(
+                (2 * context + duration) * self.feature_extraction.sample_rate
+            )
+            waveform = np.random.randn(num_samples, 1)
+            self.example_input_array = torch.unsqueeze(
+                torch.tensor(
+                    self.feature_extraction.crop(
+                        {"waveform": waveform, "duration": 2 * context + duration},
+                        Segment(context, context + duration),
+                        mode="center",
+                        fixed=duration,
+                    ),
+                ),
+                0,
+            ).repeat(5, 1, 1)
 
     @property
     def files(self):
