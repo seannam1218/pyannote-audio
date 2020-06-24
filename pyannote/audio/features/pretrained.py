@@ -30,24 +30,23 @@ from typing import Text
 from pathlib import Path
 
 import torch
+import yaml
 import numpy as np
 
 from pyannote.core import SlidingWindow
 from pyannote.core import SlidingWindowFeature
 
-from pyannote.audio.train.model import RESOLUTION_FRAME
-from pyannote.audio.train.model import RESOLUTION_CHUNK
+from pyannote.audio.train.task import Resolution
 
 from pyannote.audio.augmentation import Augmentation
-from pyannote.audio.features import FeatureExtraction
+from pyannote.audio.features.base import FeatureExtraction
 
+from pyannote.audio.train.task import BaseTask
 from pyannote.audio.applications.config import load_config
-from pyannote.audio.applications.config import load_specs
-from pyannote.audio.applications.config import load_params
 
 
 class Pretrained(FeatureExtraction):
-    """
+    """Pretrained model as feature extractor
 
     Parameters
     ----------
@@ -58,13 +57,16 @@ class Pretrained(FeatureExtraction):
         Defaults to reading epoch in validate_dir/params.yml.
     augmentation : Augmentation, optional
     duration : float, optional
-        Use audio chunks with that duration. Defaults to the fixed duration
-        used during training, when available.
+        Use audio chunks with that duration. Defaults to the duration used for
+        training, when available.
     step : float, optional
         Ratio of audio chunk duration used as step between two consecutive
         audio chunks. Defaults to 0.25.
+    batch_size : int, optional
+        Batch size. Defaults to the batch size used for training when available
+        or to 32 otherwise.
     device : optional
-    return_intermediate : optional
+        Defaults to "cuda" when GPU is available, "cpu" otherwise.
     """
 
     # TODO: add progress bar (at least for demo purposes)
@@ -76,9 +78,8 @@ class Pretrained(FeatureExtraction):
         augmentation: Optional[Augmentation] = None,
         duration: float = None,
         step: float = None,
-        batch_size: int = 32,
+        batch_size: int = None,
         device: Optional[Union[Text, torch.device]] = None,
-        return_intermediate=None,
         progress_hook=None,
     ):
 
@@ -91,68 +92,66 @@ class Pretrained(FeatureExtraction):
             )
             raise TypeError(msg)
 
-        strict = epoch is None
-        self.validate_dir = validate_dir.expanduser().resolve(strict=strict)
+        validate_dir = validate_dir.expanduser().resolve(strict=epoch is None)
 
-        train_dir = self.validate_dir.parents[1]
+        train_dir = validate_dir.parents[1]
+        hparams_yml = train_dir / "hparams.yaml"
+
         root_dir = train_dir.parents[1]
-
         config_yml = root_dir / "config.yml"
-        config = load_config(config_yml, training=False)
 
-        # use feature extraction from config.yml configuration file
-        self.feature_extraction_ = config["feature_extraction"]
-
-        super().__init__(
-            augmentation=augmentation, sample_rate=self.feature_extraction_.sample_rate
+        task_class, hparams, preprocessors = load_config(
+            config_yml, hparams_yml=hparams_yml
         )
-
-        self.feature_extraction_.augmentation = self.augmentation
-
-        specs_yml = train_dir / "specs.yml"
-        specifications = load_specs(specs_yml)
 
         if epoch is None:
-            params_yml = self.validate_dir / "params.yml"
-            params = load_params(params_yml)
-            self.epoch_ = params["epoch"]
-            # keep track of pipeline parameters
-            self.pipeline_params_ = params.get("params", {})
-        else:
+            validate_params_yml = validate_dir / "params.yml"
+            with open(validate_params_yml, "r") as fp:
+                validate_params = yaml.load(fp, Loader=yaml.SafeLoader)
+            epoch = validate_params["epoch"]
             self.epoch_ = epoch
+            self.pipeline_params_ = validate_params.get("params", dict())
 
-        self.preprocessors_ = config["preprocessors"]
-
-        self.weights_pt_ = train_dir / "weights" / f"{self.epoch_:04d}.pt"
-
-        model = config["get_model_from_specs"](specifications)
-        model.load_state_dict(
-            torch.load(self.weights_pt_, map_location=lambda storage, loc: storage)
+        checkpoint_path = train_dir / "weights" / f"epoch={epoch:04d}.ckpt"
+        task = task_class.load_from_checkpoint(
+            str(checkpoint_path), map_location=lambda storage, loc: storage
         )
 
-        # defaults to using GPU when available
+        super().__init__(
+            augmentation=augmentation, sample_rate=task.feature_extraction.sample_rate,
+        )
+        task.feature_extraction.augmentation = augmentation
+
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.device = torch.device(device)
+        self.device = device
 
-        # send model to device
-        self.model_ = model.eval().to(self.device)
+        self.task_ = task.eval().to(device)
 
-        # initialize chunks duration with that used during training
-        self.duration = getattr(config["task"], "duration", None)
-
-        self.min_duration = getattr(config["task"], "min_duration", None)
+        # initialize chunks duration and batch size with that used during training
+        self.duration = getattr(self.task_.hparams, "duration", None)
+        self.min_duration = getattr(self.task_.hparams, "min_duration", self.duration)
+        self.batch_size = getattr(self.task_.hparams, "batch_size", 32)
 
         # override chunks duration by user-provided value
         if duration is not None:
             # warn that this might be sub-optimal
-            if self.duration is not None and duration != self.duration:
-                # TODO: do not show this message if min_duration < new_duration < duration
-                msg = (
-                    f"Model was trained with {self.duration:g}s chunks and "
-                    f"is applied on {duration:g}s chunks. This might lead "
-                    f"to sub-optimal results."
-                )
+            if self.duration is not None and not (
+                self.min_duration <= duration <= self.duration
+            ):
+                if self.min_duration != self.duration:
+                    msg = (
+                        f"Model was trained with {self.min_duration:g}s to "
+                        f"{self.duration:g}s chunks and is applied on "
+                        f"{duration:g} chunks. This might lead to sub-optimal "
+                        f"results."
+                    )
+                else:
+                    msg = (
+                        f"Model was trained with {self.duration:g}s chunks and "
+                        f"is applied on {duration:g}s chunks. This might lead "
+                        f"to sub-optimal results."
+                    )
                 warnings.warn(msg)
             # do it anyway
             self.duration = duration
@@ -160,13 +159,11 @@ class Pretrained(FeatureExtraction):
         if step is None:
             step = 0.25
         self.step = step
-        self.chunks_ = SlidingWindow(
-            duration=self.duration, step=self.step * self.duration
-        )
 
-        self.batch_size = batch_size
+        # override batch size by user-provided value
+        if batch_size is not None:
+            self.batch_size = batch_size
 
-        self.return_intermediate = return_intermediate
         self.progress_hook = progress_hook
 
     @property
@@ -193,25 +190,19 @@ class Pretrained(FeatureExtraction):
 
     @property
     def classes(self):
-        return self.model_.classes
+        return self.task_.classes
 
     def get_dimension(self) -> int:
         try:
-            dimension = self.model_.dimension
+            dimension = self.task_.model.dimension
         except AttributeError:
-            dimension = len(self.model_.classes)
+            dimension = len(self.classes)
         return dimension
 
     def get_resolution(self) -> SlidingWindow:
 
-        resolution = self.model_.resolution
-
-        # model returns one vector per input frame
-        if resolution == RESOLUTION_FRAME:
-            resolution = self.feature_extraction_.sliding_window
-
-        # model returns one vector per input window
-        if resolution == RESOLUTION_CHUNK:
+        resolution = self.task_.model.resolution
+        if resolution == Resolution.CHUNK:
             resolution = self.chunks_
 
         return resolution
@@ -219,19 +210,18 @@ class Pretrained(FeatureExtraction):
     def get_features(self, y, sample_rate) -> np.ndarray:
 
         features = SlidingWindowFeature(
-            self.feature_extraction_.get_features(y, sample_rate),
-            self.feature_extraction_.sliding_window,
+            self.task_.feature_extraction.get_features(y, sample_rate),
+            self.task_.feature_extraction.sliding_window,
         )
 
-        return self.model_.slide(
+        return self.task_.model.slide(
             features,
             self.chunks_,
             batch_size=self.batch_size,
             device=self.device,
-            return_intermediate=self.return_intermediate,
             progress_hook=self.progress_hook,
         ).data
 
     def get_context_duration(self) -> float:
         # FIXME: add half window duration to context?
-        return self.feature_extraction_.get_context_duration()
+        return self.task_.feature_extraction_.get_context_duration()

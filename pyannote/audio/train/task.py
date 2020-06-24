@@ -43,8 +43,9 @@ Example
 """
 
 
-from typing import Optional, List, Dict, Text, Type, Union
+from typing import Optional, List, Dict, Text, Type, Union, Tuple
 from typing import TYPE_CHECKING
+from pathlib import Path
 
 try:
     from typing import Literal
@@ -52,10 +53,14 @@ except ImportError:
     from typing_extensions import Literal
 
 from enum import Enum
+import multiprocessing
 
 from pyannote.database import Protocol
 from pyannote.database import ProtocolFile
+from pyannote.database import Preprocessors
 from pyannote.database import Subset
+from pyannote.database.custom import gather_loaders
+
 from torch.utils.data import DataLoader
 from torch.utils.data import IterableDataset
 
@@ -63,6 +68,8 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+import yaml
 from argparse import Namespace
 
 import math
@@ -90,16 +97,82 @@ class Problem(Enum):
 
 
 class BaseTask(pl.LightningModule):
+    @staticmethod
+    def load_config(
+        config_yml: Path, hparams_yml: Path = None
+    ) -> Tuple[Type["BaseTask"], Namespace, Preprocessors]:
+        """Load and parse configuration file
+        
+        Parameters
+        ----------
+        config_yml : Path
+            Path to configuration file
+        hparams_yml : Path
+            Path to Pytorch-lightning hyper-parameter file
+        
+        Returns
+        -------
+        task_class : type
+            Task class (e.g. SpeechActivityDetection)
+        hparams : Namespace
+            Hyper-parameters.
+        preprocessors : Preprocessors
+            Preprocessors.
+        """
+
+        with open(config_yml, "r") as fp:
+            configuration = yaml.load(fp, Loader=yaml.SafeLoader)
+
+        task_section = configuration.pop("task")
+        task_class = get_class_by_name(task_section["name"])
+
+        if hparams_yml is not None:
+            with open(hparams_yml, "r") as fp:
+                configuration = yaml.load(fp, Loader=yaml.SafeLoader)
+
+        for key, value in task_section["params"].items():
+            configuration[key] = value
+
+        # preprocessors
+        preprocessors_section = configuration.pop("preprocessors", dict())
+        preprocessors, loaders = dict(), dict()
+        for key, preprocessor in preprocessors_section.items():
+            #    key:
+            #       name: package.module.ClassName
+            #       params:
+            #          param1: value1
+            #          param2: value2
+            if isinstance(preprocessor, dict):
+                preprocessor_class = get_class_by_name(preprocessor["name"])
+                preprocessors[key] = preprocessor_class(
+                    **preprocessor.get("params", dict())
+                )
+            #    key: /path/to/file.suffix
+            else:
+                loaders[key] = preprocessor
+        preprocessors.update(gather_loaders(loaders))
+
+        hparams = Namespace(**configuration)
+        return task_class, hparams, preprocessors
+
     def __init__(
         self,
-        hparams: Namespace,
+        hparams: Union[Namespace, Dict],
         protocol: Protocol = None,
         subset: Subset = "train",
         files: List[ProtocolFile] = None,
+        training: bool = True,
+        num_workers: int = None,
     ):
         super().__init__()
 
+        if isinstance(hparams, dict):
+            hparams = Namespace(**hparams)
+
         self.hparams = hparams
+        if num_workers is None:
+            num_workers = multiprocessing.cpu_count()
+        self.num_workers = num_workers
 
         # FEATURE EXTRACTION
         FeatureExtractionClass = get_class_by_name(
@@ -164,7 +237,11 @@ class BaseTask(pl.LightningModule):
         raise NotImplementedError("")
 
     def train_dataloader(self) -> DataLoader:
-        return DataLoader(self.train_dataset(), batch_size=self.hparams.batch_size,)
+        return DataLoader(
+            self.train_dataset(),
+            batch_size=self.hparams.batch_size,
+            num_workers=self.num_workers,
+        )
 
     # =========================================================================
     # CLASSES
@@ -214,12 +291,6 @@ class BaseTask(pl.LightningModule):
 
     def get_activation(self):
         return self.guess_activation()
-
-    @property
-    def activation(self):
-        if not hasattr(self, "activation_"):
-            self.activation_ = self.get_activation()
-        return self.activation_
 
     def guess_loss(self):
 
@@ -282,7 +353,7 @@ class BaseTask(pl.LightningModule):
         return optimizer
 
     def forward(self, chunks: torch.Tensor) -> torch.Tensor:
-        return self.activation(self.model(chunks))
+        return self.model(chunks)
 
     def training_step(self, batch, batch_idx):
         X = batch["X"]

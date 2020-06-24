@@ -31,6 +31,8 @@
 import numpy as np
 import random
 import math
+from typing import List, Dict
+from tqdm import trange
 
 from torch.utils.data import IterableDataset
 
@@ -40,6 +42,13 @@ from pyannote.core.utils.numpy import one_hot_encoding
 from pyannote.audio.train.task import BaseTask
 from pyannote.audio.train.task import Problem
 from pyannote.audio.train.task import Resolution
+
+
+from pyannote.audio.pipeline import (
+    SpeechActivityDetection as SpeechActivityDetectionPipeline,
+)
+from pyannote.pipeline import Optimizer
+from pyannote.database import ProtocolFile
 
 
 class Dataset(IterableDataset):
@@ -93,6 +102,11 @@ class Dataset(IterableDataset):
 
 
 class SpeechActivityDetection(BaseTask):
+    """
+    
+
+    
+    """
 
     problem = Problem.MULTI_CLASS_CLASSIFICATION
     resolution_input = Resolution.FRAME
@@ -132,6 +146,57 @@ class SpeechActivityDetection(BaseTask):
 
     def train_dataset(self) -> IterableDataset:
         return Dataset(self)
+
+    def validation_criterion(self, *args, **kwargs):
+        return "detection_fscore"
+
+    def validation_pipeline(self):
+        pipeline = SpeechActivityDetectionPipeline(
+            scores="@scores", fscore=True, hysteresis=False
+        )
+        pipeline.freeze(
+            {
+                "min_duration_on": 0.1,
+                "min_duration_off": 0.1,
+                "pad_onset": 0.0,
+                "pad_offset": 0.0,
+            }
+        )
+        return pipeline
+
+    def validation(
+        self, files: List[ProtocolFile], warm_start: Dict = None, epoch: int = None
+    ):
+        """Validation
+
+        Validation consists in looking for the value of the detection threshold 
+        that maximizes the f-score of recall and precision.
+        """
+
+        pipeline = self.validation_pipeline()
+
+        show_progress = {"unit": "file", "leave": False, "position": 2}
+
+        optimizer = Optimizer(pipeline, direction="maximize")
+        iterations = optimizer.tune_iter(
+            files, warm_start=warm_start, show_progress=show_progress
+        )
+
+        for i in trange(
+            10,
+            unit="iteration",
+            position=1,
+            leave=False,
+            desc=f"epoch #{epoch} | optimizing detection pipeline...",
+        ):
+            result = next(iterations)
+
+        return {
+            "metric": "detection_fscore",
+            "minimize": False,
+            "value": result["loss"],
+            "params": result["params"],
+        }
 
 
 # class DomainAwareSpeechActivityDetection(SpeechActivityDetection):

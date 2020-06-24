@@ -44,7 +44,7 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "pyannote-audio=pyannote.audio.applications.pyannote_audio:main",
+            "pyannote-audio=pyannote.audio.cli:main",
             "pyannote-speech-feature=pyannote.audio.applications.feature_extraction:main",
         ],
         "prodigy_recipes": [

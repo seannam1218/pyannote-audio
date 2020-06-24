@@ -139,6 +139,8 @@ class PyanNet(Model):
                 n_features, len(self.task.classes), bias=True
             )
 
+        self.final_activation_ = self.task.get_activation()
+
     def forward(self, chunks: torch.Tensor) -> torch.Tensor:
         """Forward pass
 
@@ -169,7 +171,7 @@ class PyanNet(Model):
         else:
             output = self.classification_(output)
 
-        return output
+        return self.final_activation_(output)
 
     def get_resolution(self) -> Union[Resolution, SlidingWindow]:
         if self.task.resolution_output == Resolution.CHUNK:

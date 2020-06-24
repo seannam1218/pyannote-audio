@@ -320,7 +320,6 @@ class Model(nn.Module):
         device: Union[Text, torch.device] = None,
         skip_average: Optional[bool] = None,
         postprocess: Callable[[np.ndarray], np.ndarray] = None,
-        return_intermediate=None,
         progress_hook=None,
     ) -> SlidingWindowFeature:
         """Slide and apply model on features
@@ -345,8 +344,6 @@ class Model(nn.Module):
             Function applied to the predictions of the model, for each batch
             separately. Expects a (batch_size, n_samples, n_features) np.ndarray
             as input, and returns a (batch_size, n_samples, any) np.ndarray.
-        return_intermediate :
-            Experimental. Not documented yet.
         progress_hook : callable
             Experimental. Not documented yet.
         """
@@ -356,14 +353,12 @@ class Model(nn.Module):
         device = torch.device(device)
 
         if skip_average is None:
-            skip_average = (self.resolution == Resolution.CHUNK) or (
-                return_intermediate is not None
-            )
+            skip_average = self.resolution == Resolution.CHUNK
 
         try:
             dimension = self.dimension
         except AttributeError:
-            dimension = len(self.classes)
+            dimension = len(self.task.classes)
 
         resolution = self.resolution
 
@@ -403,7 +398,7 @@ class Model(nn.Module):
             tX = torch.tensor(batch["X"], dtype=torch.float32, device=device)
 
             # FIXME: fix support for return_intermediate
-            tfX = self(tX, return_intermediate=return_intermediate)
+            tfX = self(tX)
 
             tfX_npy = tfX.detach().to("cpu").numpy()
             if postprocess is not None:

@@ -80,6 +80,9 @@ class SpeechActivityDetection(Pipeline):
     fscore : bool, optional
         Optimize (precision/recall) fscore. Defaults to optimizing detection
         error rate.
+    hysteresis : bool, optional
+
+
 
     Hyper-parameters
     ----------------
@@ -91,7 +94,9 @@ class SpeechActivityDetection(Pipeline):
         Padding duration.
     """
 
-    def __init__(self, scores: Wrappable = None, fscore: bool = False):
+    def __init__(
+        self, scores: Wrappable = None, fscore: bool = False, hysteresis: bool = True
+    ):
         super().__init__()
 
         if scores is None:
@@ -100,10 +105,14 @@ class SpeechActivityDetection(Pipeline):
         self._scores = Wrapper(self.scores)
 
         self.fscore = fscore
+        self.hysteresis = hysteresis
 
         # hyper-parameters
-        self.onset = Uniform(0.0, 1.0)
-        self.offset = Uniform(0.0, 1.0)
+        if self.hysteresis:
+            self.onset = Uniform(0.0, 1.0)
+            self.offset = Uniform(0.0, 1.0)
+        else:
+            self.threshold = Uniform(0.0, 1.0)
         self.min_duration_on = Uniform(0.0, 2.0)
         self.min_duration_off = Uniform(0.0, 2.0)
         self.pad_onset = Uniform(-1.0, 1.0)
@@ -113,8 +122,8 @@ class SpeechActivityDetection(Pipeline):
         """Initialize pipeline with current set of parameters"""
 
         self._binarize = Binarize(
-            onset=self.onset,
-            offset=self.offset,
+            onset=self.onset if self.hysteresis else self.threshold,
+            offset=self.offset if self.hysteresis else self.threshold,
             min_duration_on=self.min_duration_on,
             min_duration_off=self.min_duration_off,
             pad_onset=self.pad_onset,
