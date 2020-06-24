@@ -267,7 +267,7 @@ class SpeakerChangeDetection(LabelingTask):
             protocol,
             resolution=resolution,
             alignment=alignment,
-            subset="train",
+            subset=subset,
             collar=self.collar,
             regression=self.regression,
             non_speech=self.non_speech,
