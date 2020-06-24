@@ -17,4 +17,4 @@ pescador >= 2.1.0
 Pillow >= 6.2.1
 pytorch-lightning >= 0.8.0
 pytorch-metric-learning == 0.9.87
-numba == 0.49.1
+numba == 0.49.0

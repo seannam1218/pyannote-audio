@@ -203,8 +203,8 @@ Common options
   --step=<ratio>          Ratio of audio chunk duration used as step between
                           two consecutive audio chunks [default: 0.25]
 
-  --parallel=<n_jobs>     Use that many workers for generating training samples.
-                          Defaults to multiprocessing.cpu_count() [default: -1]
+  --parallel=<n_workers>  Use that many workers for generating training samples.
+                          Defaults to multiprocessing.cpu_count().
 """
 
 #   For speaker change detection, validation consists in looking for the value of
@@ -415,7 +415,12 @@ def run_train(arg: Dict):
     # TODO: try this "precision" thing
     # trainer_params["precision"] = ...
 
-    trainer_params["gpus"] = None if arg["--cpu"] else -1
+    if arg["--gpu"]:
+        trainer_params["gpus"] = -1
+    elif arg["--cpu"]:
+        trainer_params["gpus"] = None
+    else:
+        trainer_params["gpus"] = -1 if torch.cuda.is_available() else None
 
     resume_epoch = (
         get_last_epoch(train_dir) if arg["--from"] == "last" else int(arg["--from"])

@@ -1,26 +1,30 @@
 task:
-   name: SpeechActivityDetection
+   name: pyannote.audio.labeling.tasks.SpeechActivityDetection
    params:
       duration: 2.0
       batch_size: 8
+      learning_rate: 0.01
 
 feature_extraction:
-   name: RawAudio
+   name: pyannote.audio.features.RawAudio
    params:
       sample_rate: 16000
 
 architecture:
    name: pyannote.audio.models.PyanNet
    params:
-      rnn:
+      recurrent:
          unit: LSTM
          hidden_size: 16
          num_layers: 1
          bidirectional: True
-      ff:
+      linear:
          hidden_size: [16]
 
-scheduler:
-   name: ConstantScheduler
-   params:
-      learning_rate: 0.01
+optimizer:
+   name: torch.optim.SGD
+
+# scheduler:
+#    name: ConstantScheduler
+#    params:
+#       learning_rate: 0.01
