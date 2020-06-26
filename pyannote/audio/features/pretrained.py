@@ -42,7 +42,6 @@ from pyannote.audio.augmentation import Augmentation
 from pyannote.audio.features.base import FeatureExtraction
 
 from pyannote.audio.train.task import BaseTask
-from pyannote.audio.applications.config import load_config
 
 
 class Pretrained(FeatureExtraction):
@@ -100,7 +99,7 @@ class Pretrained(FeatureExtraction):
         root_dir = train_dir.parents[1]
         config_yml = root_dir / "config.yml"
 
-        task_class, hparams, preprocessors = load_config(
+        task_class, hparams, preprocessors = BaseTask.load_config(
             config_yml, hparams_yml=hparams_yml
         )
 
