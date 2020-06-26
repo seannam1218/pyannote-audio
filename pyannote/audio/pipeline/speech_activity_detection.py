@@ -81,8 +81,8 @@ class SpeechActivityDetection(Pipeline):
         Optimize (precision/recall) fscore. Defaults to optimizing detection
         error rate.
     hysteresis : bool, optional
-
-
+        Defaults (True) to use two onset and offset thresholds (aka hysteresis)
+        Set to False to use just one onset=offset=threshold.
 
     Hyper-parameters
     ----------------

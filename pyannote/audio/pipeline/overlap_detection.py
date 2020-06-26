@@ -63,6 +63,9 @@ class OverlapDetection(Pipeline):
     fscore : bool, optional
         Optimize (precision/recall) fscore. Defaults to optimizing recall at
         target precision.
+    hysteresis : bool, optional
+        Defaults (True) to use two onset and offset thresholds (aka hysteresis)
+        Set to False to use just one (threshold == onset == offset). 
 
 
     Hyper-parameters
@@ -76,7 +79,11 @@ class OverlapDetection(Pipeline):
     """
 
     def __init__(
-        self, scores: Wrappable = None, precision: float = 0.9, fscore: bool = False
+        self,
+        scores: Wrappable = None,
+        precision: float = 0.9,
+        fscore: bool = False,
+        hysteresis: bool = True,
     ):
         super().__init__()
 
@@ -87,10 +94,14 @@ class OverlapDetection(Pipeline):
 
         self.precision = precision
         self.fscore = fscore
+        self.hysteresis = hysteresis
 
         # hyper-parameters
-        self.onset = Uniform(0.0, 1.0)
-        self.offset = Uniform(0.0, 1.0)
+        if self.hysteresis:
+            self.onset = Uniform(0.0, 1.0)
+            self.offset = Uniform(0.0, 1.0)
+        else:
+            self.threshold = Uniform(0.0, 1.0)
         self.min_duration_on = Uniform(0.0, 2.0)
         self.min_duration_off = Uniform(0.0, 2.0)
         self.pad_onset = Uniform(-1.0, 1.0)
@@ -100,8 +111,8 @@ class OverlapDetection(Pipeline):
         """Initialize pipeline with current set of parameters"""
 
         self._binarize = Binarize(
-            onset=self.onset,
-            offset=self.offset,
+            onset=self.onset if self.hysteresis else self.threshold,
+            offset=self.offset if self.hysteresis else self.threshold,
             min_duration_on=self.min_duration_on,
             min_duration_off=self.min_duration_off,
             pad_onset=self.pad_onset,

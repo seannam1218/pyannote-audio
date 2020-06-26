@@ -1,28 +1,30 @@
 task:
-   name: DomainClassification
+   name: pyannote.audio.labeling.tasks.DomainClassification
    params:
       duration: 2.0
       batch_size: 8
       domain: uri
+      learning_rate: 0.01
 
 feature_extraction:
-   name: RawAudio
+   name: pyannote.audio.features.LibrosaMFCC
    params:
       sample_rate: 16000
 
 architecture:
    name: pyannote.audio.models.PyanNet
    params:
-      rnn:
+      sincnet:
+         skip: True
+      recurrent:
          unit: LSTM
          hidden_size: 16
          num_layers: 1
          bidirectional: False
-         pool: last
-      ff:
+      pooling:
+         method: average
+      linear:
          hidden_size: [16]
 
-scheduler:
-   name: ConstantScheduler
-   params:
-      learning_rate: 0.01
+optimizer:
+   name: torch.optim.SGD

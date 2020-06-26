@@ -1,26 +1,28 @@
 task:
-   name: OverlapDetection
+   name: pyannote.audio.labeling.tasks.OverlappedSpeechDetection
    params:
       duration: 2.0
       batch_size: 8
+      snr_min: 0.0
+      snr_max: 1.0
+      learning_rate: 0.01
 
 feature_extraction:
-   name: RawAudio
+   name: pyannote.audio.features.RawAudio
    params:
       sample_rate: 16000
 
 architecture:
    name: pyannote.audio.models.PyanNet
    params:
-      rnn:
+      recurrent:
          unit: LSTM
          hidden_size: 16
          num_layers: 1
          bidirectional: True
-      ff:
+      linear:
          hidden_size: [16]
 
-scheduler:
-   name: ConstantScheduler
-   params:
-      learning_rate: 0.01
+optimizer:
+   name: torch.optim.SGD
+

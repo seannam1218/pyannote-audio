@@ -27,7 +27,7 @@
 # Hervé BREDIN - http://herve.niderb.fr
 # Juan Manuel CORIA - https://juanmc2005.github.io
 
-from typing import List
+from typing import List, Union, Dict
 from argparse import Namespace
 import math
 
@@ -43,14 +43,10 @@ from .base import BaseSpeakerEmbedding
 
 class SpeakerEmbeddingArcFaceLoss(BaseSpeakerEmbedding):
     def __init__(
-        self,
-        hparams: Namespace,
-        protocol: Protocol = None,
-        subset: Subset = "train",
-        files: List[ProtocolFile] = None,
+        self, hparams: Union[Namespace, Dict], **kwargs,
     ):
 
-        super().__init__(hparams, protocol=protocol, subset=subset, files=files)
+        super().__init__(hparams, **kwargs)
 
         if "margin" not in self.hparams:
             self.hparams.margin = 0.2

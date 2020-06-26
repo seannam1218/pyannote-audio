@@ -1,11 +1,12 @@
 task:
-   name: SpeechActivityDetection
+   name: pyannote.audio.labeling.tasks.SpeechActivityDetection
    params:
       duration: 2.0
       batch_size: 8
+      learning_rate: 0.01
 
 feature_extraction:
-   name: LibrosaMFCC
+   name: pyannote.audio.features.LibrosaMFCC
    params:
       sample_rate: 16000
 
@@ -14,15 +15,18 @@ architecture:
    params:
       sincnet:
          skip: True
-      rnn:
+      recurrent:
          unit: LSTM
          hidden_size: 16
          num_layers: 1
          bidirectional: True
-      ff:
+      linear:
          hidden_size: [16]
 
-scheduler:
-   name: ConstantScheduler
-   params:
-      learning_rate: 0.01
+optimizer:
+   name: torch.optim.Adam
+
+# scheduler:
+#    name: ConstantScheduler
+#    params:
+#       learning_rate: 0.01

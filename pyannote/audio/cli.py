@@ -587,7 +587,9 @@ def run_validate(arg):
         for file in tqdm_files:
             file["scores"] = pretrained(file)
 
-        details = task.validation(files, warm_start=best_params, epoch=epoch)
+        details = task.validation(
+            files, warm_start=best_params, epoch=epoch, protocol=protocol, subset=subset
+        )
 
         value = details["value"]
         direction = 1 if details["minimize"] else -1
@@ -663,7 +665,6 @@ def run_apply(arg):
         precomputed_params["classes"] = pretrained.classes
     if hasattr(pretrained, "dimension"):
         precomputed_params["dimension"] = pretrained.dimension
-    print(precomputed_params)
     precomputed = Precomputed(
         root_dir=output_dir,
         sliding_window=pretrained.sliding_window,
@@ -678,7 +679,10 @@ def run_apply(arg):
         file["scores"] = pretrained(file)
         precomputed.dump(file, file["scores"])
 
-    pipeline = pretrained.task_.validation_pipeline()
+    try:
+        pipeline = pretrained.task_.validation_pipeline()
+    except AttributeError:
+        return
     pipeline.instantiate(pretrained.pipeline_params_)
 
     # load pipeline metric (when available)

@@ -26,8 +26,10 @@
 # AUTHORS
 # Hervé BREDIN - http://herve.niderb.fr
 
-from typing import Dict, Text, List
+from typing import Dict, Text, List, Union
 import random
+import numpy as np
+import math
 
 from pyannote.audio.train.task import BaseTask
 from pyannote.audio.train.task import Problem
@@ -40,7 +42,19 @@ from pyannote.core import Segment
 from pyannote.database import Protocol
 from pyannote.database import ProtocolFile
 from pyannote.database import Subset
+from pyannote.database.protocol import SpeakerDiarizationProtocol
+from pyannote.database.protocol import SpeakerVerificationProtocol
+
+from scipy.cluster.hierarchy import fcluster
+from scipy.spatial.distance import cdist
+from pyannote.core.utils.hierarchy import linkage
+import scipy.optimize
+from pyannote.metrics.diarization import DiarizationPurityCoverageFMeasure
+from pyannote.metrics.binary_classification import det_curve
+from pyannote.core import Annotation
+
 from torch.utils.data import IterableDataset
+
 
 import torch
 
@@ -50,7 +64,7 @@ from collections import Counter
 
 
 class Dataset(IterableDataset):
-    def __init__(self, task: BaseSpeakerEmbedding):
+    def __init__(self, task: "BaseSpeakerEmbedding"):
         super().__init__()
         self.task = task
 
@@ -126,7 +140,26 @@ class Dataset(IterableDataset):
                             )
 
     def __len__(self):
-        return 100
+
+        average_chunk_duration = 0.5 * (
+            self.task.hparams.min_duration + self.task.hparams.duration
+        )
+
+        median_speaker_duration = np.median(
+            [
+                sum(metadatum["duration"] for metadatum in metadata)
+                for label, metadata in self.task._dataloader_metadata.items()
+            ]
+        )
+
+        num_speakers = len(self.task._dataloader_metadata)
+        num_samples = math.ceil(
+            (num_speakers * median_speaker_duration) / average_chunk_duration
+        )
+
+        # TODO: remove when https://github.com/pytorch/pytorch/pull/38925 is released
+        num_samples = max(1, num_samples // self.task.hparams.batch_size)
+        return num_samples
 
 
 class BaseSpeakerEmbedding(BaseTask):
@@ -136,12 +169,11 @@ class BaseSpeakerEmbedding(BaseTask):
     resolution_output = Resolution.CHUNK
 
     def __init__(
-        self,
-        hparams: Namespace,
-        protocol: Protocol = None,
-        subset: Subset = "train",
-        files: List[ProtocolFile] = None,
+        self, hparams: Union[Namespace, Dict], protocol: Protocol = None, **kwargs,
     ):
+
+        if isinstance(hparams, dict):
+            hparams = Namespace(**hparams)
 
         if "duration" not in hparams:
             hparams.duration = 2.0
@@ -166,7 +198,7 @@ class BaseSpeakerEmbedding(BaseTask):
         if protocol is not None:
             protocol.preprocessors["metadata"] = self.get_metadata
 
-        super().__init__(hparams, protocol=protocol, subset=subset, files=files)
+        super().__init__(hparams, protocol=protocol, **kwargs)
 
     def get_metadata(self, file: ProtocolFile) -> Dict[Text, Dict]:
 
@@ -235,27 +267,150 @@ class BaseSpeakerEmbedding(BaseTask):
         logs = {"loss": loss}
         return {"loss": loss, "log": logs}
 
-    # def pdist(self, fX):
-    #     """Compute pdist à-la scipy.spatial.distance.pdist
+    @staticmethod
+    def validation_criterion(protocol: Protocol):
 
-    #     Parameters
-    #     ----------
-    #     fX : (n, d) torch.Tensor
-    #         Embeddings.
+        if isinstance(protocol, SpeakerVerificationProtocol):
+            return "equal_error_rate"
+        elif isinstance(protocol, SpeakerDiarizationProtocol):
+            return "diarization_fscore"
 
-    #     Returns
-    #     -------
-    #     distances : (n * (n-1) / 2,) torch.Tensor
-    #         Condensed pairwise distance matrix
-    #     """
+        msg = (
+            "Only SpeakerDiarization and SpeakerVerification protocols are "
+            "supported."
+        )
+        raise ValueError(msg)
 
-    #     if self.hparams.metric == "euclidean":
-    #         return F.pdist(fX)
+    def validation(
+        self,
+        files: List[ProtocolFile],
+        protocol: Protocol = None,
+        subset: Subset = "development",
+        warm_start: Dict = None,
+        epoch: int = None,
+    ):
 
-    #     elif self.hparams.metric in ("cosine", "angular"):
+        if isinstance(protocol, SpeakerVerificationProtocol):
+            return self.validation_verification(
+                files,
+                protocol=protocol,
+                subset=subset,
+                warm_start=warm_start,
+                epoch=epoch,
+            )
 
-    #         distance = 0.5 * torch.pow(F.pdist(F.normalize(fX)), 2)
-    #         if self.hparams.metric == "cosine":
-    #             return distance
+        elif isinstance(protocol, SpeakerDiarizationProtocol):
+            return self.validation_diarization(
+                files,
+                protocol=protocol,
+                subset=subset,
+                warm_start=warm_start,
+                epoch=epoch,
+            )
 
-    #         return torch.acos(torch.clamp(1.0 - distance, -1 + 1e-12, 1 - 1e-12))
+        msg = (
+            "Only SpeakerDiarization and SpeakerVerification protocols are "
+            "supported."
+        )
+        raise ValueError(msg)
+
+    def validation_diarization(
+        self,
+        files: List[ProtocolFile],
+        protocol: SpeakerDiarizationProtocol = None,
+        subset: Subset = "development",
+        warm_start: Dict = None,
+        epoch: int = None,
+    ):
+
+        # compute clustering dendrogram for all files
+        for file in files:
+            X = []
+            for segment, _ in file["annotation"].itertracks():
+                for mode in ["center", "loose"]:
+                    x = file["scores"].crop(segment, mode=mode)
+                    if len(x) > 0:
+                        break
+                X.append(np.mean(x, axis=0))
+            X = np.array(X)
+            file["dendrogram"] = linkage(X, method="pool", metric="cosine")
+
+        def objective(threshold):
+            metric = DiarizationPurityCoverageFMeasure(weighted=False)
+            for file in files:
+                clusters = fcluster(file["dendrogram"], threshold, criterion="distance")
+                diarization = Annotation()
+                for (segment, track), cluster in zip(
+                    file["annotation"].itertracks(), clusters
+                ):
+                    diarization[segment, track] = cluster
+                metric(file["annotation"], diarization, uem=file["annotated"])
+            return 1.0 - abs(metric)
+
+        res = scipy.optimize.minimize_scalar(
+            objective, bounds=(0.0, 2.0), method="bounded", options={"maxiter": 10}
+        )
+
+        threshold = res.x.item()
+
+        return {
+            "metric": "diarization_fscore",
+            "minimize": False,
+            "value": float(1.0 - res.fun),
+            "params": {"threshold": threshold},
+        }
+
+    def validation_verification(
+        self,
+        files: List[ProtocolFile],
+        protocol: SpeakerVerificationProtocol = None,
+        subset: Subset = "development",
+        warm_start: Dict = None,
+        epoch: int = None,
+    ):
+
+        files = {file["uri"]: file for file in files}
+
+        get_hash = lambda file: hash(tuple((file["uri"], tuple(file["try_with"]))))
+        get_embedding = lambda file: np.mean(file["scores"].crop(file["try_with"]))
+
+        get_embedding = lambda file: np.mean(
+            files[file["uri"]]["scores"].crop(file["try_with"], mode="center"),
+            axis=0,
+            keepdims=True,
+        )
+
+        y_true, y_pred, cache = [], [], dict()
+
+        for trial in getattr(protocol, f"{subset}_trial")():
+
+            # compute average embedding for file1
+            file1 = trial["file1"]
+            hash1 = get_hash(file1)
+            if hash1 in cache:
+                emb1 = cache[hash1]
+            else:
+                emb1 = get_embedding(file1)
+                cache[hash1] = emb1
+
+            # compute average embedding for file2
+            file2 = trial["file2"]
+            hash2 = get_hash(file2)
+            if hash2 in cache:
+                emb2 = cache[hash2]
+            else:
+                emb2 = get_embedding(file2)
+                cache[hash2] = emb2
+
+            # compare average embeddings
+            y_pred.append(cdist(emb1, emb2, metric="cosine")[0, 0])
+            y_true.append(trial["reference"])
+
+        # compute EER
+        _, _, _, eer = det_curve(np.array(y_true), np.array(y_pred), distances=True)
+
+        return {
+            "metric": "equal_error_rate",
+            "minimize": True,
+            "value": float(eer),
+        }

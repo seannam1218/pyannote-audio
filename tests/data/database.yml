@@ -16,4 +16,4 @@ Protocols:
                annotated: debug.test.uem
 
 Databases:
-   Debug: ./{uri}.wav
+   Debug: ./wav/{uri}.wav

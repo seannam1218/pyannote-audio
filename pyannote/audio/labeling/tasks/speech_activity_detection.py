@@ -49,64 +49,15 @@ from pyannote.audio.pipeline import (
 )
 from pyannote.pipeline import Optimizer
 from pyannote.database import ProtocolFile
+from pyannote.database import Protocol
+from pyannote.database import Subset
 
 
-class Dataset(IterableDataset):
-    def __init__(self, task: "SpeechActivityDetection"):
-        super().__init__()
-        self.task = task
-
-    def __iter__(self):
-
-        while True:
-
-            # select one file at random (with probability proportional to its annotated duration)
-            file, *_ = random.choices(
-                self.task.files,
-                weights=[file["_dataloader_duration"] for file in self.task.files],
-                k=1,
-            )
-
-            # select one annotated region at random (with probability proportional to its duration)
-            segment, *_ = random.choices(
-                file["annotated"], weights=[s.duration for s in file["annotated"]], k=1,
-            )
-
-            # select one chunk at random (with uniform distribution)
-            start_time = random.uniform(
-                segment.start, segment.end - self.task.hparams.duration
-            )
-            chunk = Segment(start_time, start_time + self.task.hparams.duration)
-
-            # extract features
-            X = self.task.feature_extraction.crop(
-                file, chunk, mode="center", fixed=self.task.hparams.duration
-            )
-
-            # extract target
-            y = file["_dataloader_target"].crop(
-                chunk, mode=self.task.model.alignment, fixed=self.task.hparams.duration
-            )
-
-            # yield batch
-            yield {"X": X, "y": y}
-
-    def __len__(self):
-        num_samples = math.ceil(
-            self.task._dataloader_duration / self.task.hparams.duration
-        )
-
-        # TODO: remove when https://github.com/pytorch/pytorch/pull/38925 is released
-        num_samples = max(1, num_samples // self.task.hparams.batch_size)
-        return num_samples
+from .base import LabelingDataset
 
 
 class SpeechActivityDetection(BaseTask):
-    """
-    
-
-    
-    """
+    """Speech activity detection"""
 
     problem = Problem.MULTI_CLASS_CLASSIFICATION
     resolution_input = Resolution.FRAME
@@ -145,9 +96,10 @@ class SpeechActivityDetection(BaseTask):
         )
 
     def train_dataset(self) -> IterableDataset:
-        return Dataset(self)
+        return LabelingDataset(self)
 
-    def validation_criterion(self, *args, **kwargs):
+    @staticmethod
+    def validation_criterion(protocol: Protocol):
         return "detection_fscore"
 
     def validation_pipeline(self):
@@ -165,7 +117,12 @@ class SpeechActivityDetection(BaseTask):
         return pipeline
 
     def validation(
-        self, files: List[ProtocolFile], warm_start: Dict = None, epoch: int = None
+        self,
+        files: List[ProtocolFile],
+        protocol: Protocol = None,
+        subset: Subset = "development",
+        warm_start: Dict = None,
+        epoch: int = None,
     ):
         """Validation
 
@@ -173,6 +130,7 @@ class SpeechActivityDetection(BaseTask):
         that maximizes the f-score of recall and precision.
         """
 
+        criterion = self.validation_criterion(protocol)
         pipeline = self.validation_pipeline()
 
         show_progress = {"unit": "file", "leave": False, "position": 2}
@@ -187,12 +145,12 @@ class SpeechActivityDetection(BaseTask):
             unit="iteration",
             position=1,
             leave=False,
-            desc=f"epoch #{epoch} | optimizing detection pipeline...",
+            desc=f"epoch #{epoch} | optimizing threshold...",
         ):
             result = next(iterations)
 
         return {
-            "metric": "detection_fscore",
+            "metric": criterion,
             "minimize": False,
             "value": result["loss"],
             "params": result["params"],

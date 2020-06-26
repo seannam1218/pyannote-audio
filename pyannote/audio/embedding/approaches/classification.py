@@ -26,7 +26,7 @@
 # AUTHORS
 # Hervé BREDIN - http://herve.niderb.fr
 
-from typing import List
+from typing import List, Union, Dict
 from argparse import Namespace
 
 from pyannote.database import Protocol
@@ -42,14 +42,10 @@ from .base import BaseSpeakerEmbedding
 
 class SpeakerEmbeddingCrossEntropyLoss(BaseSpeakerEmbedding):
     def __init__(
-        self,
-        hparams: Namespace,
-        protocol: Protocol = None,
-        subset: Subset = "train",
-        files: List[ProtocolFile] = None,
+        self, hparams: Union[Namespace, Dict], **kwargs,
     ):
 
-        super().__init__(hparams, protocol=protocol, subset=subset, files=files)
+        super().__init__(hparams, **kwargs)
         self.classifier = nn.Linear(self.model.dimension, len(self.classes), bias=False)
 
     def get_loss(self):

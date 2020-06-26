@@ -27,7 +27,7 @@
 # Hervé BREDIN - http://herve.niderb.fr
 
 
-from typing import List, Tuple
+from typing import List, Tuple, Union, Dict
 from argparse import Namespace
 import numpy as np
 
@@ -47,12 +47,11 @@ from scipy.spatial.distance import squareform
 
 class SpeakerEmbeddingTripletLoss(BaseSpeakerEmbedding):
     def __init__(
-        self,
-        hparams: Namespace,
-        protocol: Protocol = None,
-        subset: Subset = "train",
-        files: List[ProtocolFile] = None,
+        self, hparams: Union[Namespace, Dict], **kwargs,
     ):
+
+        if isinstance(hparams, dict):
+            hparams = Namespace(**hparams)
 
         if "per_label" not in hparams:
             hparams.per_label = 3
@@ -69,7 +68,7 @@ class SpeakerEmbeddingTripletLoss(BaseSpeakerEmbedding):
         if "scale" not in hparams:
             hparams.scale = 10.0
 
-        super().__init__(hparams, protocol=protocol, subset=subset, files=files)
+        super().__init__(hparams, **kwargs)
 
     def batch_easy(
         self, y: torch.Tensor, distances: np.ndarray

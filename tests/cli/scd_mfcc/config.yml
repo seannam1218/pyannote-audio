@@ -1,12 +1,13 @@
 task:
-   name: SpeakerChangeDetection
+   name: pyannote.audio.labeling.tasks.SpeakerChangeDetection
    params:
       duration: 2.0
       batch_size: 8
       collar: 0.1
+      learning_rate: 0.01
 
 feature_extraction:
-   name: LibrosaMFCC
+   name: pyannote.audio.features.LibrosaMFCC
    params:
       sample_rate: 16000
 
@@ -15,15 +16,13 @@ architecture:
    params:
       sincnet:
          skip: True
-      rnn:
+      recurrent:
          unit: LSTM
          hidden_size: 16
          num_layers: 1
          bidirectional: True
-      ff:
+      linear:
          hidden_size: [16]
 
-scheduler:
-   name: ConstantScheduler
-   params:
-      learning_rate: 0.01
+optimizer:
+   name: torch.optim.SGD

@@ -30,14 +30,22 @@
 
 import random
 import math
+import numpy as np
 
 from torch.utils.data import IterableDataset
+from typing import List, Dict
+
+from pyannote.database import ProtocolFile
+from pyannote.database import Protocol
+from pyannote.database import Subset
 
 from pyannote.core import Segment
 
 from pyannote.audio.train.task import BaseTask
 from pyannote.audio.train.task import Problem
 from pyannote.audio.train.task import Resolution
+
+from collections import Counter
 
 
 class Dataset(IterableDataset):
@@ -116,3 +124,41 @@ class DomainClassification(BaseTask):
 
     def train_dataset(self) -> IterableDataset:
         return Dataset(self)
+
+    @staticmethod
+    def validation_criterion(protocol: Protocol):
+        return "accuracy"
+
+    def validation(
+        self,
+        files: List[ProtocolFile],
+        protocol: Protocol = None,
+        subset: Subset = "development",
+        warm_start: Dict = None,
+        epoch: int = None,
+    ):
+        """Validation
+
+        Validation consists in looking for the value of the detection threshold 
+        that maximizes the f-score of recall and precision.
+        """
+
+        criterion = self.validation_criterion(protocol)
+        domains = self.classes
+
+        y_true_file, y_pred_file = [], []
+
+        for file in files:
+            y_pred = np.argmax(file["scores"], axis=1)
+            y_pred_file.append(Counter(y_pred).most_common(1)[0][0])
+
+            y_true = domains.index(file[self.hparams.domain])
+            y_true_file.append(y_true)
+
+        accuracy = np.mean(np.array(y_true_file) == np.array(y_pred_file))
+
+        return {
+            "metric": criterion,
+            "minimize": False,
+            "value": float(accuracy),
+        }
