@@ -35,7 +35,6 @@ from pyannote.pipeline.blocks.classification import ClosestAssignment
 from pyannote.core import Annotation
 from .utils import assert_int_labels
 from .utils import assert_string_labels
-from ..features import Precomputed
 
 from pyannote.audio.features.wrapper import Wrapper, Wrappable
 
@@ -94,7 +93,7 @@ class SpeechTurnClosestAssignment(Pipeline):
         # gather targets embedding
         labels = targets.labels()
         X_targets, targets_labels = [], []
-        for l, label in enumerate(labels):
+        for label in labels:
 
             timeline = targets.label_timeline(label, copy=False)
 
@@ -115,7 +114,7 @@ class SpeechTurnClosestAssignment(Pipeline):
         # gather speech turns embedding
         labels = speech_turns.labels()
         X, assigned_labels, skipped_labels = [], [], []
-        for l, label in enumerate(labels):
+        for label in labels:
 
             timeline = speech_turns.label_timeline(label, copy=False)
 

@@ -157,7 +157,7 @@ class SpeechTurnSegmentation(Pipeline):
         metric = DiarizationPurityCoverageFMeasure()
         reference = current_file["annotation"]
         uem = get_annotated(current_file)
-        f_measure = metric(reference, hypothesis, uem=uem)
+        _ = metric(reference, hypothesis, uem=uem)
         purity, coverage, _ = metric.compute_metrics()
         if purity > self.purity:
             return 1.0 - coverage

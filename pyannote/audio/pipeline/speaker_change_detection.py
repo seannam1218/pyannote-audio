@@ -37,10 +37,8 @@ from pyannote.core import Annotation
 from pyannote.core import SlidingWindowFeature
 
 from pyannote.audio.utils.signal import Peak
-from pyannote.audio.features import Precomputed
 
 from pyannote.database import get_annotated
-from pyannote.database import get_unique_identifier
 from pyannote.metrics.segmentation import SegmentationPurityCoverageFMeasure
 from pyannote.metrics.diarization import DiarizationPurityCoverageFMeasure
 
@@ -173,7 +171,7 @@ class SpeakerChangeDetection(Pipeline):
         metric = SegmentationPurityCoverageFMeasure(tolerance=0.500, beta=1)
         reference = current_file["annotation"]
         uem = get_annotated(current_file)
-        f_measure = metric(reference, hypothesis, uem=uem)
+        _ = metric(reference, hypothesis, uem=uem)
         purity, coverage, _ = metric.compute_metrics()
         if purity > self.purity:
             return 1.0 - coverage

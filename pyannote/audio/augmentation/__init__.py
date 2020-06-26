@@ -36,3 +36,11 @@ from .noise import AddNoise
 from .noise import AddNoiseFromGaps
 
 # from .reverb import Reverb
+
+
+__all__ = [
+    "Augmentation",
+    "NoAugmentation",
+    "AddNoise",
+    "AddNoiseFromGaps",
+]

@@ -84,7 +84,7 @@ class Pretrained(FeatureExtraction):
 
         try:
             validate_dir = Path(validate_dir)
-        except TypeError as e:
+        except TypeError:
             msg = (
                 f'"validate_dir" must be str, bytes or os.PathLike object, '
                 f"not {type(validate_dir).__name__}."

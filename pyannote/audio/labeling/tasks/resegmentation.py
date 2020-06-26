@@ -33,7 +33,6 @@ from typing import Type
 from typing import Iterable
 from typing import Dict
 from typing import Text
-import scipy.signal
 
 import torch
 import tempfile
@@ -41,7 +40,6 @@ import numpy as np
 from .base import LabelingTask
 from .base import LabelingTaskGenerator
 from pyannote.audio.train.task import Task, TaskType, TaskOutput
-from pyannote.core import Timeline
 from pyannote.core import Annotation
 from pyannote.core import SlidingWindow
 from pyannote.core import SlidingWindowFeature
@@ -59,7 +57,6 @@ from pyannote.database import ProtocolFile
 from pyannote.audio.train.model import Model
 from pyannote.audio.train.model import Resolution
 from pyannote.audio.train.model import Alignment
-from pyannote.audio.train.task import Task
 
 
 class ResegmentationGenerator(LabelingTaskGenerator):

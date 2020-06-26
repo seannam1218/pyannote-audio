@@ -285,7 +285,7 @@ class FF(nn.Module):
         Linear layers hidden dimensions. Defaults to [16, ].
     """
 
-    def __init__(self, n_features, hidden_size=[16,]):
+    def __init__(self, n_features, hidden_size=[16]):
         super().__init__()
 
         self.n_features = n_features
@@ -366,7 +366,7 @@ class Embedding(nn.Module):
         self.scaling = Scaling(n_features, method=scale)
 
         if unit_normalize is True:
-            msg = f"'unit_normalize' has been deprecated in favor of 'scale'."
+            msg = "'unit_normalize' has been deprecated in favor of 'scale'."
             raise ValueError(msg)
 
     def forward(self, embedding):

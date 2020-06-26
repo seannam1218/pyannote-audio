@@ -28,18 +28,24 @@
 
 
 from pathlib import Path
-from typing import Text
-from typing import Union
-from typing import Dict
+from typing import Text, Union, Dict, TYPE_CHECKING
 from functools import partial
 from pyannote.database import ProtocolFile
 from pyannote.core import Segment
 from pyannote.core import SlidingWindowFeature
 import numpy as np
 
+if TYPE_CHECKING:
+    from pyannote.audio.features import Precomputed
+    from pyannote.audio.features import Pretrained
+    from pyannote.audio.features import RawAudio
+    from pyannote.audio.features import FeatureExtraction
+
+
 Wrappable = Union[
     "Precomputed", "Pretrained", "RawAudio", "FeatureExtraction", Dict, Text, Path
 ]
+
 
 # this needs to go here to make Wrapper instances pickable
 def _use_existing_key(key, file):
@@ -145,7 +151,7 @@ class Wrapper:
             # features or scores, wrap the corresponding `Precomputed` instance
             try:
                 scorer = Precomputed(root_dir=directory)
-            except Exception as e:
+            except Exception:
                 scorer = None
 
             # If `wrappable` is a `Path` to a validation directory,
@@ -153,7 +159,7 @@ class Wrapper:
             if scorer is None:
                 try:
                     scorer = Pretrained(validate_dir=directory, **params)
-                except Exception as e:
+                except Exception:
                     scorer = None
 
             if scorer is None:
@@ -172,7 +178,7 @@ class Wrapper:
                 validate_dir = checkpoint.parents[1] / "validate" / "fake"
                 epoch = int(checkpoint.stem)
                 scorer = Pretrained(validate_dir=validate_dir, epoch=epoch, **params)
-            except Exception as e:
+            except Exception:
                 msg = (
                     f'"{wrappable}" directory does not seem to be the path '
                     f"to a pretrained model checkpoint."

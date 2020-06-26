@@ -164,7 +164,7 @@ Common options
                           "test") for strict enforcement of machine learning
                           good practices.
 
-  --gpu                   Run on all available GPUs. Use CUDA_VISIBLE_DEVICES 
+  --gpu                   Run on all available GPUs. Use CUDA_VISIBLE_DEVICES
                           environment variable to force using specific ones.
 
   --cpu                   Run on CPU. Defaults to using GPUs when available.
@@ -188,13 +188,13 @@ Common options
   --to=<epoch>            End training (resp. validating) at epoch <epoch>.
                           Defaults to 100 for training and to "last" for validation
                           (i.e. validate until last available epoch at launch time).
-                          Not used for inference.  
+                          Not used for inference.
 
   --every=<epoch>         Validate model every <epoch> epochs [default: 1].
 
   --batch=<size>          Set batch size used for validation and inference.
                           Has no effect when training as this parameter should
-                          be defined in the configuration file. Defaults to 
+                          be defined in the configuration file. Defaults to
                           the one used for training.
 
   --duration=<duration>   Use audio chunks with that duration. Defaults to the
@@ -231,7 +231,7 @@ from glob import glob
 from tqdm import tqdm, trange
 from docopt import docopt
 from pathlib import Path
-from typing import Tuple, Type, Text, Dict
+from typing import Text, Dict
 import multiprocessing
 
 from pyannote.database import get_protocol
@@ -261,7 +261,7 @@ def load_protocol(
     protocol_name: Text, subset: Subset = "train", preprocessors: Preprocessors = None
 ):
     """Initialize pyannote.database protocol for use with pyannote.audio
-    
+
     Automatically add "audio" and "duration" keys when they are not available
 
     Parameters
@@ -529,6 +529,9 @@ def run_validate(arg):
         best_value = None
         best_params = None
 
+    past_value = None
+    past_epoch = None
+
     # run feature extraction once and for all
     task = task_class(hparams, training=False)
     if not isinstance(task.feature_extraction, (Precomputed, RawAudio)):
@@ -609,7 +612,7 @@ def run_validate(arg):
                 fp.write(yaml.dump(new_best, default_flow_style=False))
 
             # create/update zip file for later upload to torch.hub
-            hub_zip = create_zip(validate_dir)
+            _ = create_zip(validate_dir)
 
         writer.add_scalar(
             f"validate/{criterion}/{protocol_name}.{subset}", value, global_step=epoch,
@@ -688,7 +691,7 @@ def run_apply(arg):
     # load pipeline metric (when available)
     try:
         metric = pipeline.get_metric()
-    except NotImplementedError as e:
+    except NotImplementedError:
         metric = None
 
     # apply pipeline and dump output to RTTM files

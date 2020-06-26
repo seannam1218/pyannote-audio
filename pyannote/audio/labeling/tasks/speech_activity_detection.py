@@ -29,8 +29,6 @@
 """Speech activity detection"""
 
 import numpy as np
-import random
-import math
 from typing import List, Dict
 from tqdm import trange
 
@@ -126,7 +124,7 @@ class SpeechActivityDetection(BaseTask):
     ):
         """Validation
 
-        Validation consists in looking for the value of the detection threshold 
+        Validation consists in looking for the value of the detection threshold
         that maximizes the f-score of recall and precision.
         """
 

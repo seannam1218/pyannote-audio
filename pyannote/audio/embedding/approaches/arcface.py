@@ -27,17 +27,11 @@
 # Hervé BREDIN - http://herve.niderb.fr
 # Juan Manuel CORIA - https://juanmc2005.github.io
 
-from typing import List, Union, Dict
+from typing import Union, Dict
 from argparse import Namespace
 import math
-
-from pyannote.database import Protocol
-from pyannote.database import ProtocolFile
-from pyannote.database import Subset
-
 import torch
 from pytorch_metric_learning.losses import ArcFaceLoss
-
 from .base import BaseSpeakerEmbedding
 
 

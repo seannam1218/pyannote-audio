@@ -26,12 +26,10 @@
 # AUTHORS
 # Hervé BREDIN - http://herve.niderb.fr
 
-from typing import Text, List, Dict, Iterator
 from pyannote.core import Segment, SlidingWindow, Annotation
-
+from typing import Text, List, Dict, Iterator
 import numpy as np
 import random
-
 import io
 import base64
 import scipy.io.wavfile

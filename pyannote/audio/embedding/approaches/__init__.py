@@ -28,10 +28,16 @@
 # Juan Manuel CORIA
 
 
-from .classification import SpeakerEmbeddingCrossEntropyLoss
-from .triplet_loss import SpeakerEmbeddingTripletLoss
-from .arcface_loss import SpeakerEmbeddingArcFaceLoss
+from .cross_entropy import SpeakerEmbeddingCrossEntropyLoss
+from .triplet import SpeakerEmbeddingTripletLoss
+from .arcface import SpeakerEmbeddingArcFaceLoss
 
 # from .coco_loss import CongenerousCosineLoss
 # from .contrastive_loss import ContrastiveLoss
 # from .center_loss import CenterLoss
+
+__all__ = [
+    "SpeakerEmbeddingCrossEntropyLoss",
+    "SpeakerEmbeddingTripletLoss",
+    "SpeakerEmbeddingArcFaceLoss",
+]

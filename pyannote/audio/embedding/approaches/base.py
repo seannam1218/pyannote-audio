@@ -237,7 +237,7 @@ class BaseSpeakerEmbedding(BaseTask):
 
         for file in self.files:
             for label, metadatum in file["metadata"].items():
-                if not label in self.classes:
+                if label not in self.classes:
                     continue
                 self._dataloader_metadata.setdefault(label, []).append(metadatum)
 
@@ -371,14 +371,15 @@ class BaseSpeakerEmbedding(BaseTask):
 
         files = {file["uri"]: file for file in files}
 
-        get_hash = lambda file: hash(tuple((file["uri"], tuple(file["try_with"]))))
-        get_embedding = lambda file: np.mean(file["scores"].crop(file["try_with"]))
+        def get_hash(file: ProtocolFile):
+            return hash(tuple((file["uri"], tuple(file["try_with"]))))
 
-        get_embedding = lambda file: np.mean(
-            files[file["uri"]]["scores"].crop(file["try_with"], mode="center"),
-            axis=0,
-            keepdims=True,
-        )
+        def get_embedding(file: ProtocolFile):
+            return np.mean(
+                files[file["uri"]]["scores"].crop(file["try_with"], mode="center"),
+                axis=0,
+                keepdims=True,
+            )
 
         y_true, y_pred, cache = [], [], dict()
 

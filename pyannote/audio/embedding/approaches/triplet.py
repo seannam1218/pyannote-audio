@@ -30,17 +30,9 @@
 from typing import List, Tuple, Union, Dict
 from argparse import Namespace
 import numpy as np
-
-from pyannote.database import Protocol
-from pyannote.database import ProtocolFile
-from pyannote.database import Subset
-
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-
 from .base import BaseSpeakerEmbedding
-
 from pyannote.core.utils.distance import to_condensed
 from scipy.spatial.distance import squareform
 

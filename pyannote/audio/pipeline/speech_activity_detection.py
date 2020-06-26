@@ -30,7 +30,6 @@
 
 from typing import Union
 import numpy as np
-import warnings
 
 from pyannote.pipeline import Pipeline
 from pyannote.pipeline.parameter import Uniform
@@ -39,7 +38,6 @@ from pyannote.core import Annotation
 from pyannote.core import SlidingWindowFeature
 
 from pyannote.audio.utils.signal import Binarize
-from pyannote.audio.features import Precomputed
 
 from pyannote.metrics.detection import DetectionErrorRate
 from pyannote.metrics.detection import DetectionPrecisionRecallFMeasure
@@ -82,7 +80,7 @@ class SpeechActivityDetection(Pipeline):
         error rate.
     hysteresis : bool, optional
         Defaults (True) to use two onset and offset thresholds (aka hysteresis)
-        Set to False to use just one onset=offset=threshold.
+        Set to False to use just one (threshold == onset == offset).
 
     Hyper-parameters
     ----------------

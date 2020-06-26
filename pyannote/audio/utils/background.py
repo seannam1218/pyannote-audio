@@ -303,7 +303,7 @@ class AdaptiveBackgroundGenerator:
         self.generators_ = []
 
         if self.verbose:
-            msg = f"Starting with one producer."
+            msg = "Starting with one producer."
             print(msg)
 
         # start by creating one background generator to the pool

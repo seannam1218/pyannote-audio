@@ -179,9 +179,9 @@ class RawAudio:
 
         # TODO: how time consuming is this thing (needs profiling...)
         try:
-            valid = valid_audio(y[:, 0], mono=True)
-        except ParameterError as e:
-            msg = f"Something went wrong when augmenting waveform."
+            _ = valid_audio(y[:, 0], mono=True)
+        except ParameterError:
+            msg = "Something went wrong when augmenting waveform."
             raise ValueError(msg)
 
         return y
@@ -219,8 +219,8 @@ class RawAudio:
 
             if len(y.shape) != 2:
                 msg = (
-                    f"Precomputed waveform should be provided as a "
-                    f"(n_samples, n_channels) `np.ndarray`."
+                    "Precomputed waveform should be provided as a "
+                    "(n_samples, n_channels) `np.ndarray`."
                 )
                 raise ValueError(msg)
 
@@ -294,18 +294,14 @@ class RawAudio:
             segment, mode=mode, fixed=fixed, return_ranges=True
         )
 
-        # this is expected number of samples.
-        # this will be useful later in case of on-the-fly resampling
-        n_samples = end - start
-
         if "waveform" in current_file:
 
             y = current_file["waveform"]
 
             if len(y.shape) != 2:
                 msg = (
-                    f"Precomputed waveform should be provided as a "
-                    f"(n_samples, n_channels) `np.ndarray`."
+                    "Precomputed waveform should be provided as a "
+                    "(n_samples, n_channels) `np.ndarray`."
                 )
                 raise ValueError(msg)
 
@@ -335,7 +331,7 @@ class RawAudio:
                 try:
                     audio_file.seek(start)
                     data = audio_file.read(end - start, dtype="float32", always_2d=True)
-                except RuntimeError as e:
+                except RuntimeError:
                     msg = (
                         f"SoundFile failed to seek-and-read in "
                         f"{current_file['audio']}: loading the whole file..."
@@ -349,6 +345,11 @@ class RawAudio:
             data = data[:, channel - 1 : channel]
 
         return self.get_features(data, sample_rate)
+
+
+def normalize(wav):
+    """Normalize waveform"""
+    return wav / (np.sqrt(np.mean(wav ** 2)) + 1e-8)
 
 
 # # THIS SCRIPT CAN BE USED TO CRASH-TEST THE ON-THE-FLY RESAMPLING

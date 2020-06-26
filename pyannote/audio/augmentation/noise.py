@@ -36,6 +36,7 @@ import numpy as np
 from pyannote.core import Segment
 from pyannote.audio.features.utils import RawAudio
 from pyannote.audio.features.utils import get_audio_duration
+from pyannote.audio.features.utils import normalize
 from pyannote.core.utils.random import random_subsegment
 from pyannote.core.utils.random import random_segment
 from pyannote.database import get_protocol
@@ -43,9 +44,6 @@ from pyannote.database import Subset
 from pyannote.database import get_annotated
 from pyannote.database import FileFinder
 from .base import Augmentation
-
-
-normalize = lambda wav: wav / (np.sqrt(np.mean(wav ** 2)) + 1e-8)
 
 
 class AddNoise(Augmentation):

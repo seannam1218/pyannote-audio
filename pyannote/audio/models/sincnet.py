@@ -344,7 +344,7 @@ class SincNet(nn.Module):
         if self.activation == "leaky_relu":
             self.activation_ = nn.LeakyReLU(negative_slope=0.2)
         else:
-            msg = f'Only "leaky_relu" activation is supported.'
+            msg = 'Only "leaky_relu" activation is supported.'
             raise ValueError(msg)
 
         # Dropout

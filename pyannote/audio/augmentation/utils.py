@@ -31,8 +31,6 @@ from typing import Union
 from typing import List
 from typing import Optional
 
-NoiseCollection = Union[str, List[str]]
-
 import random
 import numpy as np
 
@@ -41,12 +39,12 @@ from pyannote.core.utils.random import random_subsegment
 
 from pyannote.audio.features import RawAudio
 from pyannote.audio.features.utils import get_audio_duration
+from pyannote.audio.features.utils import normalize
 
 from pyannote.database import FileFinder
 from pyannote.database import get_protocol
 
-
-normalize = lambda wav: wav / (np.sqrt(np.mean(wav ** 2)) + 1e-8)
+NoiseCollection = Union[str, List[str]]
 
 
 class Noise:

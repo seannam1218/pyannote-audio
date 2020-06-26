@@ -139,8 +139,7 @@ class DomainClassification(BaseTask):
     ):
         """Validation
 
-        Validation consists in looking for the value of the detection threshold 
-        that maximizes the f-score of recall and precision.
+        Validation consists in computing file-wise domain classification accuracy.
         """
 
         criterion = self.validation_criterion(protocol)

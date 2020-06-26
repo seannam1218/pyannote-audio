@@ -26,7 +26,6 @@
 # AUTHORS
 # Hervé BREDIN - http://herve.niderb.fr
 
-from typing import Optional
 import numpy as np
 
 from pyannote.pipeline import Pipeline
@@ -39,12 +38,10 @@ from pyannote.core import SlidingWindowFeature
 from pyannote.database import get_annotated
 
 from pyannote.audio.utils.signal import Binarize
-from pyannote.audio.features import Precomputed
 
 from pyannote.metrics.detection import DetectionPrecision
 from pyannote.metrics.detection import DetectionRecall
 from pyannote.metrics.detection import DetectionPrecisionRecallFMeasure
-from pyannote.metrics import f_measure
 from pyannote.audio.features.wrapper import Wrapper, Wrappable
 
 
@@ -65,7 +62,7 @@ class OverlapDetection(Pipeline):
         target precision.
     hysteresis : bool, optional
         Defaults (True) to use two onset and offset thresholds (aka hysteresis)
-        Set to False to use just one (threshold == onset == offset). 
+        Set to False to use just one (threshold == onset == offset).
 
 
     Hyper-parameters

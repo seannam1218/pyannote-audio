@@ -187,11 +187,11 @@ class CenterLoss(RepresentationLearning):
             self.center_dist_.load_state_dict(centers_state)
 
             success = True
-        except Exception as e:
+        except Exception:
             msg = (
-                f"Did not load classifier and center states (most likely because current "
-                f"training session uses a different training set than the one "
-                f"used for pre-training)."
+                "Did not load classifier and center states (most likely because current "
+                "training session uses a different training set than the one "
+                "used for pre-training)."
             )
             warnings.warn(msg)
             success = False

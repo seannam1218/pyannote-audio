@@ -31,7 +31,7 @@ import torch.nn as nn
 
 try:
     from typing import Literal
-except ImportError as e:
+except ImportError:
     from typing_extensions import Literal
 
 

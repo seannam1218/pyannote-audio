@@ -51,8 +51,7 @@ from pyannote.database import ProtocolFile
 from pyannote.database import Protocol
 from pyannote.database import Subset
 
-
-normalize = lambda wav: wav / (np.sqrt(np.mean(wav ** 2)) + 1e-8)
+from pyannote.audio.features.utils import normalize
 
 
 class Dataset(IterableDataset):
@@ -85,7 +84,7 @@ class Dataset(IterableDataset):
                 alpha = np.exp(-np.log(10) * random_snr / 20)
                 waveform = normalize(waveform) + alpha * normalize(other_waveform)
 
-                y_mapping = {label: l for l, label in enumerate(chunk["labels"])}
+                y_mapping = {label: i for i, label in enumerate(chunk["labels"])}
                 num_labels = len(y_mapping)
                 for label in other_chunk["labels"]:
                     if label not in y_mapping:
@@ -95,10 +94,10 @@ class Dataset(IterableDataset):
                 y = chunk["y"]
                 other_y = other_chunk["y"]
                 combined_y = np.zeros_like(y, shape=(len(y), num_labels))
-                for l, label in enumerate(chunk["labels"]):
-                    combined_y[:, y_mapping[label]] += y[:, l]
-                for l, label in enumerate(other_chunk["labels"]):
-                    combined_y[:, y_mapping[label]] += other_y[:, l]
+                for i, label in enumerate(chunk["labels"]):
+                    combined_y[:, y_mapping[label]] += y[:, i]
+                for i, label in enumerate(other_chunk["labels"]):
+                    combined_y[:, y_mapping[label]] += other_y[:, i]
                 y = combined_y
 
             X = self.task.feature_extraction.crop(
@@ -232,7 +231,7 @@ class OverlappedSpeechDetection(BaseTask):
     ):
         """Validation
 
-        Validation consists in looking for the value of the detection threshold 
+        Validation consists in looking for the value of the detection threshold
         that maximizes the f-score of recall and precision.
         """
 

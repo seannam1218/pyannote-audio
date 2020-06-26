@@ -57,3 +57,13 @@ except Exception as e:
         f'because something went wrong at import: "{e}".'
     )
     print(msg)
+
+__all__ = [
+    "FeatureExtraction",
+    "RawAudio",
+    "LibrosaMFCC",
+    "LibrosaSpectrogram",
+    "LibrosaMelSpectrogram",
+    "Precomputed",
+    "Pretrained",
+]

@@ -124,7 +124,7 @@ def process_current_file(
 
     try:
         features = feature_extraction(current_file)
-    except PyannoteFeatureExtractionError as e:
+    except PyannoteFeatureExtractionError:
         msg = 'Feature extraction failed for file "{uri}".'
         return msg.format(uri=uri)
 
@@ -186,7 +186,7 @@ def extract(protocol_name, file_finder, experiment_dir, robust=False, parallel=F
     # create metadata file at root that contains
     # sliding window and dimension information
 
-    precomputed = Precomputed(
+    _ = Precomputed(
         root_dir=experiment_dir, sliding_window=sliding_window, dimension=dimension
     )
 
@@ -231,8 +231,8 @@ def check(protocol_name, file_finder, experiment_dir):
 
         try:
             file_generator = getattr(protocol, subset)()
-            first_item = next(file_generator)
-        except NotImplementedError as e:
+            _ = next(file_generator)
+        except NotImplementedError:
             continue
 
         for current_file in getattr(protocol, subset)():

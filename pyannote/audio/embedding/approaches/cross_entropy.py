@@ -26,17 +26,11 @@
 # AUTHORS
 # Hervé BREDIN - http://herve.niderb.fr
 
-from typing import List, Union, Dict
+from typing import Union, Dict
 from argparse import Namespace
-
-from pyannote.database import Protocol
-from pyannote.database import ProtocolFile
-from pyannote.database import Subset
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from .base import BaseSpeakerEmbedding
 
 

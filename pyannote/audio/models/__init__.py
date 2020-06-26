@@ -29,3 +29,7 @@
 # from .models import PyanNet, SincTDNN, ACRoPoLiS
 
 from .pyannet import PyanNet
+
+__all__ = [
+    "PyanNet",
+]

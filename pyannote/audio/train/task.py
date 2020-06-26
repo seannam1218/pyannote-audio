@@ -43,14 +43,8 @@ Example
 """
 
 
-from typing import Optional, List, Dict, Text, Type, Union, Tuple
-from typing import TYPE_CHECKING
+from typing import List, Dict, Text, Type, Union, Tuple
 from pathlib import Path
-
-try:
-    from typing import Literal
-except ImportError:
-    from typing_extensions import Literal
 
 from enum import Enum
 import multiprocessing
@@ -85,7 +79,7 @@ class Resolution(Enum):
 
 class Problem(Enum):
     """Type of machine learning problem
-    
+
     Used to automatically suggest reasonable default final activation layer
     and loss function.
     """
@@ -102,14 +96,14 @@ class BaseTask(pl.LightningModule):
         config_yml: Path, hparams_yml: Path = None
     ) -> Tuple[Type["BaseTask"], Namespace, Preprocessors]:
         """Load and parse configuration file
-        
+
         Parameters
         ----------
         config_yml : Path
             Path to configuration file
         hparams_yml : Path
             Path to Pytorch-lightning hyper-parameter file
-        
+
         Returns
         -------
         task_class : type
@@ -220,7 +214,7 @@ class BaseTask(pl.LightningModule):
         if not hasattr(self, "files_"):
             # load protocol files once and for all
             if self.protocol is None:
-                msg = f"No training protocol available. Please provide one."
+                msg = "No training protocol available. Please provide one."
                 raise ValueError(msg)
             self.files_ = list(getattr(self.protocol, self.subset)())
 
@@ -250,7 +244,7 @@ class BaseTask(pl.LightningModule):
     @property
     def classes(self) -> List[Text]:
         """List of classes
-        
+
         Used to automatically infer the output dimension of the model
         """
         if "classes" not in self.hparams:
@@ -259,8 +253,8 @@ class BaseTask(pl.LightningModule):
 
     def get_classes(self) -> List[Text]:
         """Compute list of classes
-        
-        Called when classes depend on the training data (e.g. for domain 
+
+        Called when classes depend on the training data (e.g. for domain
         classification experiments where we do not know in advance what
         domains are)
         """

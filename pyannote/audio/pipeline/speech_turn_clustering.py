@@ -33,7 +33,6 @@ from pyannote.core import Annotation
 from pyannote.core import Timeline
 from pyannote.core.utils.numpy import one_hot_decoding
 from pyannote.pipeline import Pipeline
-from pyannote.audio.features import Precomputed
 from pyannote.pipeline.blocks.clustering import HierarchicalAgglomerativeClustering
 from pyannote.pipeline.blocks.clustering import AffinityPropagationClustering
 from .utils import assert_string_labels
@@ -181,7 +180,7 @@ class SpeechTurnClustering(Pipeline):
 
         labels = speech_turns.labels()
         X, clustered_labels, skipped_labels = [], [], []
-        for l, label in enumerate(labels):
+        for label in labels:
 
             timeline = speech_turns.label_timeline(label, copy=False)
 
@@ -208,8 +207,8 @@ class SpeechTurnClustering(Pipeline):
 
         # map each skipped label to its own cluster
         # (between -1 and -N_SKIPPED_LABELS)
-        for l, label in enumerate(skipped_labels):
-            mapping[label] = -(l + 1)
+        for i, label in enumerate(skipped_labels):
+            mapping[label] = -(i + 1)
 
         # do the actual mapping
         return speech_turns.rename_labels(mapping=mapping)

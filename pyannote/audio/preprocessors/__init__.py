@@ -28,3 +28,5 @@
 
 
 from .speech_activity_detection import RemoveNonSpeech
+
+__all__ = ["RemoveNonSpeech"]

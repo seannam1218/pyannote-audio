@@ -38,7 +38,7 @@ import numpy as np
 import threading
 import collections
 
-normalize = lambda wav: wav / (np.sqrt(np.mean(wav ** 2)) + 1e-8)
+from pyannote.audio.features.utils import normalize
 
 
 class Reverb(Augmentation):

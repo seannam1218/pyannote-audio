@@ -29,8 +29,6 @@
 """Speaker change detection"""
 
 import numpy as np
-import random
-import math
 from typing import List, Dict, Union
 from tqdm import trange
 import scipy.signal
@@ -177,7 +175,7 @@ class SpeakerChangeDetection(BaseTask):
     ):
         """Validation
 
-        Validation consists in looking for the value of the peak threshold 
+        Validation consists in looking for the value of the peak threshold
         that maximizes the f-score of segmentation purity and coverage.
         """
 

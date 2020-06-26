@@ -27,7 +27,7 @@
 # Hervé BREDIN - http://herve.niderb.fr
 
 
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 from pyannote.core import SlidingWindow
 from pyannote.core.utils.types import Alignment
 from pyannote.audio.train.model import Model
@@ -51,7 +51,7 @@ class PyanNet(Model):
     task : BaseTask
         Task addressed by the model.
     sincnet : `dict`, optional
-        Configuration of SincNet layers. 
+        Configuration of SincNet layers.
         Use {'skip': True} to use handcrafted features instead of waveforms.
     recurrent : `dict`, optional
         Configuration of recurrent layers.
@@ -76,12 +76,12 @@ class PyanNet(Model):
         Parameters
         ----------
         sincnet : `dict`, optional
-            Configuration of SincNet layers. 
+            Configuration of SincNet layers.
             Use {'skip': True} to use handcrafted features instead of waveforms.
         recurrent : `dict`, optional
             Configuration of recurrent layers.
         pooling : dict, optional
-            Configuration of pooling layer. 
+            Configuration of pooling layer.
         linear : `dict`, optional
             Configuration of linear layers.
         scaling : `dict`, optional

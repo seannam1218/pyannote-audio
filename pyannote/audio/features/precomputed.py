@@ -30,7 +30,6 @@
 import yaml
 import io
 from pathlib import Path
-from glob import glob
 import numpy as np
 from numpy.lib.format import open_memmap
 
@@ -123,9 +122,9 @@ class Precomputed:
             if dimension is None:
                 if classes is None:
                     msg = (
-                        f"Please provide either `dimension` or `classes` "
-                        f"parameters (or both) when instantiating "
-                        f"`Precomputed`."
+                        "Please provide either `dimension` or `classes` "
+                        "parameters (or both) when instantiating "
+                        "`Precomputed`."
                     )
                 dimension = len(classes)
 

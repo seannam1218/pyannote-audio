@@ -73,8 +73,8 @@ class Model(nn.Module):
     A `Model` is nothing but a `torch.nn.Module` instance with a bunch of
     additional methods and properties specific to `pyannote.audio`.
 
-    It is expected to be instantiated with a unique `task` positional argument 
-    describing the task addressed by the model, and a user-defined number of 
+    It is expected to be instantiated with a unique `task` positional argument
+    describing the task addressed by the model, and a user-defined number of
     keyword arguments describing the model architecture.
 
     Parameters
@@ -109,7 +109,7 @@ class Model(nn.Module):
         this allows to access information about the task such as:
            - the input feature dimension (self.task.feature_extraction.dimension)
            - the list of output classes (self.task.classes)
-           - and many other details such self.task.problem, or 
+           - and many other details such self.task.problem, or
              self.task.resolution_{in|out}put
 
         Parameters
@@ -240,7 +240,7 @@ class Model(nn.Module):
         Returns
         -------
         resolution: Resolution.CHUNK or SlidingWindow instance
-            If resolution is Resolution.CHUNK, it means that the model returns 
+            If resolution is Resolution.CHUNK, it means that the model returns
             just one output for the whole input chunk.
             If resolution is a SlidingWindow instances, it means that the model
             returns a sequence of frames.
@@ -249,7 +249,7 @@ class Model(nn.Module):
 
     def guess_resolution(self) -> Union[Resolution, SlidingWindow]:
         """Guess output resolution
-        
+
         Returns
         -------
         resolution: Resolution.CHUNK or SlidingWindow instance
@@ -274,7 +274,7 @@ class Model(nn.Module):
         This method is called by the train dataloader to determine how target
         tenshors should be aligned with the model output.
 
-        In most cases, you should not need to worry about this but if you do, 
+        In most cases, you should not need to worry about this but if you do,
         this method can be overriden to return 'strict' or 'loose'.
         """
         return self.guess_alignment()
@@ -309,7 +309,7 @@ class Model(nn.Module):
         if self.task.problem == Problem.REPRESENTATION:
             return self.get_dimension()
 
-        msg = f"'dimension' is only defined for representation learning."
+        msg = "'dimension' is only defined for representation learning."
         raise AttributeError(msg)
 
     def slide(

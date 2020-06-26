@@ -25,10 +25,10 @@
 
 
 from typing import List, Tuple
-
-Time = float
 from pyannote.core import SlidingWindow
 import numpy as np
+
+Time = float
 
 
 def time2index(

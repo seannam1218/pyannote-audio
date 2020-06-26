@@ -50,8 +50,6 @@ from .utils import to_base64
 from .utils import to_audio_spans
 
 # clustering
-CONSTRAINT = Tuple[float, float]
-CONSTRAINTS = List[CONSTRAINT]
 from pyannote.core.utils.hierarchy import propagate_constraints
 from pyannote.core.utils.hierarchy import pool
 from scipy.cluster.hierarchy import fcluster
@@ -64,6 +62,9 @@ import numpy as np
 from copy import deepcopy
 from .sad import load_sad_manual
 from itertools import filterfalse
+
+CONSTRAINT = Tuple[float, float]
+CONSTRAINTS = List[CONSTRAINT]
 
 
 class DiaRecipeHelper:
@@ -201,7 +202,7 @@ class DiaRecipeHelper:
 
                     try:
                         i = next(iterations)
-                    except StopIteration as e:
+                    except StopIteration:
                         done_with_current_file = True
                         break
 
@@ -310,7 +311,7 @@ class DiaRecipeHelper:
                     )
 
                     task_audio_spans = [
-                        {"start": 0.0, "end": segment1.duration, "label": "SPEAKER",},
+                        {"start": 0.0, "end": segment1.duration, "label": "SPEAKER"},
                         {
                             "start": segment1.duration,
                             "end": segment1.duration + segment2.duration,
@@ -349,16 +350,16 @@ class DiaRecipeHelper:
             if eg["answer"] == "accept":
                 self.must_link_time.append((t1, t2))
                 needs_update = True
-                prodigy.log(f"RECIPE: new constraint: +1 must link")
+                prodigy.log("RECIPE: new constraint: +1 must link")
 
             elif eg["answer"] == "reject":
                 self.cannot_link_time.append((t1, t2))
                 needs_update = True
-                prodigy.log(f"RECIPE: new constraint: +1 cannot link")
+                prodigy.log("RECIPE: new constraint: +1 cannot link")
 
             else:
                 self.dont_know_time.append((t1, t2))
-                prodigy.log(f"RECIPE: new constraint: skip")
+                prodigy.log("RECIPE: new constraint: skip")
 
         # expand list of "cannot link" constraints thanks to the following rule
         # (u != v) & (v == w) ==> u != w
@@ -378,7 +379,7 @@ class DiaRecipeHelper:
         for audio_source in Audio(self.source):
 
             path = audio_source["path"]
-            text = audio_source["text"]
+            # text = audio_source["text"]
 
             # load speech/non-speech annotations (from pyannote.sad.manual recipe)
             file = load_sad_manual(self.dataset, path)
