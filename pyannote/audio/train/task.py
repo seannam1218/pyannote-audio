@@ -168,12 +168,23 @@ class BaseTask(pl.LightningModule):
             num_workers = multiprocessing.cpu_count()
         self.num_workers = num_workers
 
+        # AUGMENTATION
+        if training and "data_augmentation" in self.hparams:
+
+            AugmentationClass = get_class_by_name(
+                self.hparams.data_augmentation["name"]
+            )
+            augmentation = AugmentationClass(**self.hparams.data_augmentation["params"])
+
+        else:
+            augmentation = None
+
         # FEATURE EXTRACTION
         FeatureExtractionClass = get_class_by_name(
             self.hparams.feature_extraction["name"]
         )
         self.feature_extraction = FeatureExtractionClass(
-            **self.hparams.feature_extraction["params"]
+            **self.hparams.feature_extraction["params"], augmentation=augmentation
         )
 
         # TRAINING DATA
