@@ -479,6 +479,7 @@ def run_validate(arg):
         start = get_last_epoch(train_dir)
     else:
         start = int(start)
+    start = max(1, start)
 
     end = arg["--to"]
 
@@ -541,7 +542,7 @@ def run_validate(arg):
         for file in tqdm_files:
             file["features"] = task.feature_extraction(file)
 
-    pbar = trange(start, end, every, unit="epoch", position=0, leave=True)
+    pbar = trange(start, end + 1, every, unit="epoch", position=0, leave=True)
     for e, epoch in enumerate(pbar):
 
         if best_epoch is None:
