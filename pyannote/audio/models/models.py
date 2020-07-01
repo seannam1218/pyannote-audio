@@ -27,8 +27,7 @@
 # Hervé BREDIN - http://herve.niderb.fr
 # Juan Manuel Coria
 
-from typing import Optional
-from typing import Text
+from typing import Optional, Text, Dict, Union
 
 import torch
 import torch.nn as nn
@@ -45,11 +44,11 @@ from .sincnet import SincNet
 # from .pooling import Pooling
 # from .scaling import Scaling
 
+from pyannote.core import SlidingWindow
+from pyannote.core.utils.types import Alignment
 from pyannote.audio.train.model import Model
-from pyannote.audio.train.model import Resolution
-from pyannote.audio.train.model import RESOLUTION_CHUNK
-from pyannote.audio.train.model import RESOLUTION_FRAME
-from pyannote.audio.train.task import Task
+from pyannote.audio.train.task import Resolution
+from pyannote.audio.train.task import Problem
 
 
 class RNN(nn.Module):
