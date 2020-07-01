@@ -34,15 +34,16 @@ import torch
 import torch.nn as nn
 
 from .sincnet import SincNet
-from .tdnn import XVectorNet
-from .pooling import TemporalPooling
+
+# from .tdnn import XVectorNet
+# from .pooling import TemporalPooling
 
 
-from .convolutional import Convolutional
-from .recurrent import Recurrent
-from .linear import Linear
-from .pooling import Pooling
-from .scaling import Scaling
+# from .convolutional import Convolutional
+# from .recurrent import Recurrent
+# from .linear import Linear
+# from .pooling import Pooling
+# from .scaling import Scaling
 
 from pyannote.audio.train.model import Model
 from pyannote.audio.train.model import Resolution
@@ -401,61 +402,61 @@ class PyanNet(Model):
         only has effect when model is used for representation learning.
     """
 
-    @staticmethod
-    def get_alignment(task: Task, sincnet=None, **kwargs):
-        """Get frame alignment"""
+    # @staticmethod
+    # def get_alignment(task: Task, sincnet=None, **kwargs):
+    #     """Get frame alignment"""
 
-        if sincnet is None:
-            sincnet = dict()
+    #     if sincnet is None:
+    #         sincnet = dict()
 
-        if sincnet.get("skip", False):
-            return "center"
+    #     if sincnet.get("skip", False):
+    #         return "center"
 
-        return SincNet.get_alignment(task, **sincnet)
+    #     return SincNet.get_alignment(task, **sincnet)
 
-    @staticmethod
-    def get_resolution(
-        task: Task,
-        sincnet: Optional[dict] = None,
-        rnn: Optional[dict] = None,
-        **kwargs,
-    ) -> Resolution:
-        """Get sliding window used for feature extraction
+    # @staticmethod
+    # def get_resolution(
+    #     task: Task,
+    #     sincnet: Optional[dict] = None,
+    #     rnn: Optional[dict] = None,
+    #     **kwargs,
+    # ) -> Resolution:
+    #     """Get sliding window used for feature extraction
 
-        Parameters
-        ----------
-        task : Task
-        sincnet : dict, optional
-        rnn : dict, optional
+    #     Parameters
+    #     ----------
+    #     task : Task
+    #     sincnet : dict, optional
+    #     rnn : dict, optional
 
-        Returns
-        -------
-        sliding_window : `pyannote.core.SlidingWindow` or {`window`, `frame`}
-            Returns RESOLUTION_CHUNK if model returns one vector per input
-            chunk, RESOLUTION_FRAME if model returns one vector per input
-            frame, and specific sliding window otherwise.
-        """
+    #     Returns
+    #     -------
+    #     sliding_window : `pyannote.core.SlidingWindow` or {`window`, `frame`}
+    #         Returns RESOLUTION_CHUNK if model returns one vector per input
+    #         chunk, RESOLUTION_FRAME if model returns one vector per input
+    #         frame, and specific sliding window otherwise.
+    #     """
 
-        if rnn is None:
-            rnn = {"pool": None}
+    #     if rnn is None:
+    #         rnn = {"pool": None}
 
-        if rnn.get("pool", None) is not None:
-            return RESOLUTION_CHUNK
+    #     if rnn.get("pool", None) is not None:
+    #         return RESOLUTION_CHUNK
 
-        if sincnet is None:
-            sincnet = {"skip": False}
+    #     if sincnet is None:
+    #         sincnet = {"skip": False}
 
-        if sincnet.get("skip", False):
-            return RESOLUTION_FRAME
+    #     if sincnet.get("skip", False):
+    #         return RESOLUTION_FRAME
 
-        return SincNet.get_resolution(task, **sincnet)
+    #     return SincNet.get_resolution(task, **sincnet)
 
     def init(
         self,
-        sincnet: Optional[dict] = None,
-        rnn: Optional[dict] = None,
-        ff: Optional[dict] = None,
-        embedding: Optional[dict] = None,
+        sincnet: Dict = None,
+        rnn: Dict = None,
+        ff: Dict = None,
+        embedding: Dict = None,
     ):
         """waveform -> SincNet -> RNN [-> merge] [-> time_pool] -> FC -> output
 
@@ -475,7 +476,8 @@ class PyanNet(Model):
             only has effect when model is used for representation learning.
         """
 
-        n_features = self.n_features
+        # n_features = self.n_features
+        n_features = self.task.feature_extraction.dimension
 
         if sincnet is None:
             sincnet = dict()
@@ -503,17 +505,17 @@ class PyanNet(Model):
         self.ff_ = FF(n_features, **ff)
         n_features = self.ff_.dimension
 
-        if self.task.is_representation_learning:
+        if self.task.problem == Problem.REPRESENTATION:
             if embedding is None:
                 embedding = dict()
             self.embedding = embedding
             self.embedding_ = Embedding(n_features, **embedding)
             return
 
-        self.linear_ = nn.Linear(n_features, len(self.classes), bias=True)
-        self.activation_ = self.task.default_activation
+        self.linear_ = nn.Linear(n_features, len(self.task.classes), bias=True)
+        self.activation_ = self.task.get_activation()
 
-    def forward(self, waveforms, return_intermediate=None):
+    def forward(self, waveforms):
         """Forward pass
 
         Parameters
@@ -521,17 +523,11 @@ class PyanNet(Model):
         waveforms : (batch_size, n_samples, 1) `torch.Tensor`
             Batch of waveforms. In case SincNet is skipped, a tensor with shape
             (batch_size, n_samples, n_features) is expected.
-        return_intermediate : `int`, optional
-            Index of RNN layer. Returns RNN intermediate hidden state.
-            Defaults to only return the final output.
 
         Returns
         -------
         output : `torch.Tensor`
             Final network output.
-        intermediate : `torch.Tensor`
-            Intermediate network output (only when `return_intermediate`
-            is provided).
         """
 
         if self.sincnet.get("skip", False):
@@ -539,316 +535,310 @@ class PyanNet(Model):
         else:
             output = self.sincnet_(waveforms)
 
-        if return_intermediate is None:
-            output = self.rnn_(output)
-        else:
-            if return_intermediate == 0:
-                intermediate = output
-                output = self.rnn_(output)
-            else:
-                return_intermediate -= 1
-                # get RNN final AND intermediate outputs
-                output, intermediate = self.rnn_(output, return_intermediate=True)
-                # only keep hidden state of requested layer
-                intermediate = intermediate[return_intermediate]
-
+        output = self.rnn_(output)
         output = self.ff_(output)
 
-        if self.task.is_representation_learning:
+        if self.task.problem == Problem.REPRESENTATION:
             return self.embedding_(output)
 
         output = self.linear_(output)
-        output = self.activation_(output)
+        return self.activation_(output)
 
-        if return_intermediate is None:
-            return output
-        return output, intermediate
+    def get_resolution(self) -> Union[Resolution, SlidingWindow]:
+        if self.task.resolution_output == Resolution.CHUNK:
+            return Resolution.CHUNK
 
-    @property
-    def dimension(self):
-        if self.task.is_representation_learning:
+        if self.sincnet.get("skip", False):
+            return self.task.feature_extraction.sliding_window
+
+        return self.sincnet_.get_resolution()
+
+    def get_alignment(self) -> Alignment:
+        if self.sincnet.get("skip", False):
+            return "center"
+
+        return self.sincnet_.get_alignment()
+
+    def get_dimension(self) -> int:
+        if self.task.problem == Problem.REPRESENTATION:
             return self.embedding_.dimension
 
-        return Model.dimension.fget(self)
-
-    def intermediate_dimension(self, layer):
-        if layer == 0:
-            return self.sincnet_.dimension
-        return self.rnn_.intermediate_dimension(layer - 1)
-
-
-class SincTDNN(Model):
-    """waveform -> SincNet -> XVectorNet (TDNN -> FC) -> output
-
-    Parameters
-    ----------
-    sincnet : `dict`, optional
-        SincNet parameters. Defaults to `pyannote.audio.models.sincnet.SincNet`
-        default parameters.
-    tdnn : `dict`, optional
-        X-Vector Time-Delay neural network parameters.
-        Defaults to `pyannote.audio.models.tdnn.XVectorNet` default parameters.
-    embedding : `dict`, optional
-        Embedding parameters. Defaults to `Embedding` default parameters. This
-        only has effect when model is used for representation learning.
-    """
-
-    @staticmethod
-    def get_alignment(task: Task, sincnet=None, **kwargs):
-        """Get frame alignment"""
-
-        if sincnet is None:
-            sincnet = dict()
-
-        return SincNet.get_alignment(task, **sincnet)
-
-    supports_packed = False
-
-    @staticmethod
-    def get_resolution(
-        task: Task, sincnet: Optional[dict] = None, **kwargs
-    ) -> Resolution:
-        """Get sliding window used for feature extraction
-
-        Parameters
-        ----------
-        task : Task
-        sincnet : dict, optional
-
-        Returns
-        -------
-        sliding_window : `pyannote.core.SlidingWindow` or {`window`, `frame`}
-        """
-
-        # TODO add support for frame-wise and sequence labeling tasks
-        # TODO https://github.com/pyannote/pyannote-audio/issues/290
-        return RESOLUTION_CHUNK
-
-    def init(
-        self,
-        sincnet: Optional[dict] = None,
-        tdnn: Optional[dict] = None,
-        embedding: Optional[dict] = None,
-    ):
-        """waveform -> SincNet -> XVectorNet (TDNN -> FC) -> output
-
-        Parameters
-        ----------
-        sincnet : `dict`, optional
-            SincNet parameters. Defaults to `pyannote.audio.models.sincnet.SincNet`
-            default parameters.
-        tdnn : `dict`, optional
-            X-Vector Time-Delay neural network parameters.
-            Defaults to `pyannote.audio.models.tdnn.XVectorNet` default parameters.
-        embedding : `dict`, optional
-            Embedding parameters. Defaults to `Embedding` default parameters. This
-            only has effect when model is used for representation learning.
-        """
-
-        n_features = self.n_features
-
-        if sincnet is None:
-            sincnet = dict()
-        self.sincnet = sincnet
-
-        if n_features != 1:
-            raise ValueError(
-                "SincNet only supports mono waveforms. "
-                f"Here, waveform has {n_features} channels."
-            )
-        self.sincnet_ = SincNet(**sincnet)
-        n_features = self.sincnet_.dimension
-
-        if tdnn is None:
-            tdnn = dict()
-        self.tdnn = tdnn
-        self.tdnn_ = XVectorNet(n_features, **tdnn)
-        n_features = self.tdnn_.dimension
-
-        if self.task.is_representation_learning:
-            if embedding is None:
-                embedding = dict()
-            self.embedding = embedding
-            self.embedding_ = Embedding(n_features, **embedding)
         else:
-            self.linear_ = nn.Linear(n_features, len(self.classes), bias=True)
-            self.activation_ = self.task.default_activation
-
-    def forward(self, waveforms: torch.Tensor, **kwargs) -> torch.Tensor:
-        """Forward pass
-
-        Parameters
-        ----------
-        waveforms : (batch_size, n_samples, 1) `torch.Tensor`
-            Batch of waveforms
-
-        Returns
-        -------
-        output : `torch.Tensor`
-            Final network output or intermediate network output
-            (only when `return_intermediate` is provided).
-        """
-
-        output = self.sincnet_(waveforms)
-
-        return_intermediate = (
-            "segment6" if self.task.is_representation_learning else None
-        )
-        output = self.tdnn_(output, return_intermediate=return_intermediate)
-
-        if self.task.is_representation_learning:
-            return self.embedding_(output)
-
-        return self.activation_(self.linear_(output))
-
-    @property
-    def dimension(self):
-        if self.task.is_representation_learning:
-            return self.embedding_.dimension
-
-        return Model.dimension.fget(self)
+            return len(self.task.classes)
 
 
-class ACRoPoLiS(Model):
-    """Audio -> Convolutional -> Recurrent (-> optional Pooling) -> Linear -> Scores
+# class SincTDNN(Model):
+#     """waveform -> SincNet -> XVectorNet (TDNN -> FC) -> output
 
-    Parameters
-    ----------
-    specifications : dict
-        Task specifications.
-    convolutional : dict, optional
-        Definition of convolutional layers.
-        Defaults to convolutional.Convolutional default hyper-parameters.
-    recurrent : dict, optional
-        Definition of recurrent layers.
-        Defaults to recurrent.Recurrent default hyper-parameters.
-    pooling : {"last", ""}, optional
-        Definition of pooling layer. Only used when self.task.returns_vector is
-        True, in which case it defaults to "last" pooling.
-    linear : dict, optional
-        Definition of linear layers.
-        Defaults to linear.Linear default hyper-parameters.
-    scale : dict, optional
-    """
+#     Parameters
+#     ----------
+#     sincnet : `dict`, optional
+#         SincNet parameters. Defaults to `pyannote.audio.models.sincnet.SincNet`
+#         default parameters.
+#     tdnn : `dict`, optional
+#         X-Vector Time-Delay neural network parameters.
+#         Defaults to `pyannote.audio.models.tdnn.XVectorNet` default parameters.
+#     embedding : `dict`, optional
+#         Embedding parameters. Defaults to `Embedding` default parameters. This
+#         only has effect when model is used for representation learning.
+#     """
 
-    def init(
-        self,
-        convolutional: dict = None,
-        recurrent: dict = None,
-        linear: dict = None,
-        pooling: Text = None,
-        scale: dict = None,
-    ):
+#     @staticmethod
+#     def get_alignment(task: Task, sincnet=None, **kwargs):
+#         """Get frame alignment"""
 
-        self.normalize = nn.InstanceNorm1d(self.n_features)
+#         if sincnet is None:
+#             sincnet = dict()
 
-        if convolutional is None:
-            convolutional = dict()
-        self.convolutional = convolutional
-        self.cnn = Convolutional(self.n_features, **convolutional)
+#         return SincNet.get_alignment(task, **sincnet)
 
-        if recurrent is None:
-            recurrent = dict()
-        self.recurrent = recurrent
-        self.rnn = Recurrent(self.cnn.dimension, **recurrent)
+#     supports_packed = False
 
-        if pooling is None and self.task.returns_vector:
-            pooling = "last"
-        if pooling is not None and self.task.returns_sequence:
-            msg = f"'pooling' should not be used for labeling tasks (is: {pooling})."
-            raise ValueError(msg)
+#     @staticmethod
+#     def get_resolution(
+#         task: Task, sincnet: Optional[dict] = None, **kwargs
+#     ) -> Resolution:
+#         """Get sliding window used for feature extraction
 
-        self.pooling = pooling
-        self.pool = Pooling(
-            self.rnn.dimension,
-            method=self.pooling,
-            bidirectional=self.rnn.bidirectional,
-        )
+#         Parameters
+#         ----------
+#         task : Task
+#         sincnet : dict, optional
 
-        if linear is None:
-            linear = dict()
-        self.linear = linear
-        self.ff = Linear(self.pool.dimension, **linear)
+#         Returns
+#         -------
+#         sliding_window : `pyannote.core.SlidingWindow` or {`window`, `frame`}
+#         """
 
-        if self.task.is_representation_learning and scale is None:
-            scale = dict()
-        if not self.task.is_representation_learning and scale is not None:
-            msg = (
-                f"'scale' should not be used for representation learning (is: {scale})."
-            )
-            raise ValueError(msg)
+#         # TODO add support for frame-wise and sequence labeling tasks
+#         # TODO https://github.com/pyannote/pyannote-audio/issues/290
+#         return RESOLUTION_CHUNK
 
-        self.scale = scale
-        self.scaling = Scaling(self.ff.dimension, **scale)
+#     def init(
+#         self,
+#         sincnet: Optional[dict] = None,
+#         tdnn: Optional[dict] = None,
+#         embedding: Optional[dict] = None,
+#     ):
+#         """waveform -> SincNet -> XVectorNet (TDNN -> FC) -> output
 
-        if not self.task.is_representation_learning:
-            self.final_linear = nn.Linear(
-                self.scaling.dimension, len(self.classes), bias=True
-            )
-            self.final_activation = self.task.default_activation
+#         Parameters
+#         ----------
+#         sincnet : `dict`, optional
+#             SincNet parameters. Defaults to `pyannote.audio.models.sincnet.SincNet`
+#             default parameters.
+#         tdnn : `dict`, optional
+#             X-Vector Time-Delay neural network parameters.
+#             Defaults to `pyannote.audio.models.tdnn.XVectorNet` default parameters.
+#         embedding : `dict`, optional
+#             Embedding parameters. Defaults to `Embedding` default parameters. This
+#             only has effect when model is used for representation learning.
+#         """
 
-    def forward(self, waveforms: torch.Tensor, **kwargs) -> torch.Tensor:
-        """Forward pass
+#         n_features = self.n_features
 
-        Parameters
-        ----------
-        waveforms : (batch_size, n_samples, 1) `torch.Tensor`
-            Batch of waveforms
+#         if sincnet is None:
+#             sincnet = dict()
+#         self.sincnet = sincnet
 
-        Returns
-        -------
-        output : `torch.Tensor`
-            Final network output or intermediate network output
-            (only when `return_intermediate` is provided).
-        """
+#         if n_features != 1:
+#             raise ValueError(
+#                 "SincNet only supports mono waveforms. "
+#                 f"Here, waveform has {n_features} channels."
+#             )
+#         self.sincnet_ = SincNet(**sincnet)
+#         n_features = self.sincnet_.dimension
 
-        output = self.normalize(waveforms.transpose(1, 2)).transpose(1, 2)
-        output = self.cnn(output)
-        output = self.rnn(output)
-        output = self.pool(output)
-        output = self.ff(output)
+#         if tdnn is None:
+#             tdnn = dict()
+#         self.tdnn = tdnn
+#         self.tdnn_ = XVectorNet(n_features, **tdnn)
+#         n_features = self.tdnn_.dimension
 
-        if not self.task.is_representation_learning:
-            output = self.final_linear(output)
-            output = self.final_activation(output)
-        return output
+#         if self.task.is_representation_learning:
+#             if embedding is None:
+#                 embedding = dict()
+#             self.embedding = embedding
+#             self.embedding_ = Embedding(n_features, **embedding)
+#         else:
+#             self.linear_ = nn.Linear(n_features, len(self.classes), bias=True)
+#             self.activation_ = self.task.default_activation
 
-    @property
-    def dimension(self):
-        if self.task.is_representation_learning:
-            return self.ff.dimension
-        else:
-            return len(self.classes)
+#     def forward(self, waveforms: torch.Tensor, **kwargs) -> torch.Tensor:
+#         """Forward pass
 
-    @staticmethod
-    def get_alignment(task: Task, convolutional: Optional[dict] = None, **kwargs):
-        """Get frame alignment"""
+#         Parameters
+#         ----------
+#         waveforms : (batch_size, n_samples, 1) `torch.Tensor`
+#             Batch of waveforms
 
-        if convolutional is None:
-            convolutional = dict()
+#         Returns
+#         -------
+#         output : `torch.Tensor`
+#             Final network output or intermediate network output
+#             (only when `return_intermediate` is provided).
+#         """
 
-        return Convolutional.get_alignment(task, **convolutional)
+#         output = self.sincnet_(waveforms)
 
-    @staticmethod
-    def get_resolution(
-        task: Task, convolutional: Optional[dict] = None, **kwargs
-    ) -> Resolution:
-        """Get frame resolution
+#         return_intermediate = (
+#             "segment6" if self.task.is_representation_learning else None
+#         )
+#         output = self.tdnn_(output, return_intermediate=return_intermediate)
 
-        Parameters
-        ----------
-        task : Task
-        convolutional : dict, optional
+#         if self.task.is_representation_learning:
+#             return self.embedding_(output)
 
-        Returns
-        -------
-        sliding_window : `pyannote.core.SlidingWindow` or {`window`, `frame`}
-        """
+#         return self.activation_(self.linear_(output))
 
-        if task.returns_vector:
-            return RESOLUTION_CHUNK
+#     @property
+#     def dimension(self):
+#         if self.task.is_representation_learning:
+#             return self.embedding_.dimension
 
-        if convolutional is None:
-            convolutional = dict()
+#         return Model.dimension.fget(self)
 
-        return Convolutional.get_resolution(task, **convolutional)
+
+# class ACRoPoLiS(Model):
+#     """Audio -> Convolutional -> Recurrent (-> optional Pooling) -> Linear -> Scores
+
+#     Parameters
+#     ----------
+#     specifications : dict
+#         Task specifications.
+#     convolutional : dict, optional
+#         Definition of convolutional layers.
+#         Defaults to convolutional.Convolutional default hyper-parameters.
+#     recurrent : dict, optional
+#         Definition of recurrent layers.
+#         Defaults to recurrent.Recurrent default hyper-parameters.
+#     pooling : {"last", ""}, optional
+#         Definition of pooling layer. Only used when self.task.returns_vector is
+#         True, in which case it defaults to "last" pooling.
+#     linear : dict, optional
+#         Definition of linear layers.
+#         Defaults to linear.Linear default hyper-parameters.
+#     scale : dict, optional
+#     """
+
+#     def init(
+#         self,
+#         convolutional: dict = None,
+#         recurrent: dict = None,
+#         linear: dict = None,
+#         pooling: Text = None,
+#         scale: dict = None,
+#     ):
+
+#         self.normalize = nn.InstanceNorm1d(self.n_features)
+
+#         if convolutional is None:
+#             convolutional = dict()
+#         self.convolutional = convolutional
+#         self.cnn = Convolutional(self.n_features, **convolutional)
+
+#         if recurrent is None:
+#             recurrent = dict()
+#         self.recurrent = recurrent
+#         self.rnn = Recurrent(self.cnn.dimension, **recurrent)
+
+#         if pooling is None and self.task.returns_vector:
+#             pooling = "last"
+#         if pooling is not None and self.task.returns_sequence:
+#             msg = f"'pooling' should not be used for labeling tasks (is: {pooling})."
+#             raise ValueError(msg)
+
+#         self.pooling = pooling
+#         self.pool = Pooling(
+#             self.rnn.dimension,
+#             method=self.pooling,
+#             bidirectional=self.rnn.bidirectional,
+#         )
+
+#         if linear is None:
+#             linear = dict()
+#         self.linear = linear
+#         self.ff = Linear(self.pool.dimension, **linear)
+
+#         if self.task.is_representation_learning and scale is None:
+#             scale = dict()
+#         if not self.task.is_representation_learning and scale is not None:
+#             msg = (
+#                 f"'scale' should not be used for representation learning (is: {scale})."
+#             )
+#             raise ValueError(msg)
+
+#         self.scale = scale
+#         self.scaling = Scaling(self.ff.dimension, **scale)
+
+#         if not self.task.is_representation_learning:
+#             self.final_linear = nn.Linear(
+#                 self.scaling.dimension, len(self.classes), bias=True
+#             )
+#             self.final_activation = self.task.default_activation
+
+#     def forward(self, waveforms: torch.Tensor, **kwargs) -> torch.Tensor:
+#         """Forward pass
+
+#         Parameters
+#         ----------
+#         waveforms : (batch_size, n_samples, 1) `torch.Tensor`
+#             Batch of waveforms
+
+#         Returns
+#         -------
+#         output : `torch.Tensor`
+#             Final network output or intermediate network output
+#             (only when `return_intermediate` is provided).
+#         """
+
+#         output = self.normalize(waveforms.transpose(1, 2)).transpose(1, 2)
+#         output = self.cnn(output)
+#         output = self.rnn(output)
+#         output = self.pool(output)
+#         output = self.ff(output)
+
+#         if not self.task.is_representation_learning:
+#             output = self.final_linear(output)
+#             output = self.final_activation(output)
+#         return output
+
+#     @property
+#     def dimension(self):
+#         if self.task.is_representation_learning:
+#             return self.ff.dimension
+#         else:
+#             return len(self.classes)
+
+#     @staticmethod
+#     def get_alignment(task: Task, convolutional: Optional[dict] = None, **kwargs):
+#         """Get frame alignment"""
+
+#         if convolutional is None:
+#             convolutional = dict()
+
+#         return Convolutional.get_alignment(task, **convolutional)
+
+#     @staticmethod
+#     def get_resolution(
+#         task: Task, convolutional: Optional[dict] = None, **kwargs
+#     ) -> Resolution:
+#         """Get frame resolution
+
+#         Parameters
+#         ----------
+#         task : Task
+#         convolutional : dict, optional
+
+#         Returns
+#         -------
+#         sliding_window : `pyannote.core.SlidingWindow` or {`window`, `frame`}
+#         """
+
+#         if task.returns_vector:
+#             return RESOLUTION_CHUNK
+
+#         if convolutional is None:
+#             convolutional = dict()
+
+#         return Convolutional.get_resolution(task, **convolutional)

@@ -189,4 +189,7 @@ class PyanNet(Model):
         return self.sincnet_.get_alignment()
 
     def get_dimension(self) -> int:
-        return self.scaling_.dimension
+        if self.task.problem == Problem.REPRESENTATION:
+            return self.scaling_.dimension
+
+        return len(self.task.classes)
