@@ -73,7 +73,7 @@ class SpeakerChangeDetection(BaseTask):
     def get_classes(self):
         return ["non_change", "change"]
 
-    def prepare_data(self):
+    def prepare_metadata(self):
 
         # number of samples in collar
         resolution = self.model.resolution

@@ -64,7 +64,7 @@ class SpeechActivityDetection(BaseTask):
     def get_classes(self):
         return ["non_speech", "speech"]
 
-    def prepare_data(self):
+    def prepare_metadata(self):
 
         output_resolution = self.model.get_resolution()
 

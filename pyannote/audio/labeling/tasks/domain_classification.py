@@ -106,7 +106,7 @@ class DomainClassification(BaseTask):
     def get_classes(self):
         return sorted(set(file[self.hparams.domain] for file in self.files))
 
-    def prepare_data(self):
+    def prepare_metadata(self):
 
         for file in self.files:
             file["_dataloader_duration"] = sum(

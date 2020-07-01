@@ -231,7 +231,7 @@ class BaseSpeakerEmbedding(BaseTask):
             if duration > self.hparams.label_min_duration
         )
 
-    def prepare_data(self):
+    def prepare_metadata(self):
 
         self._dataloader_metadata: Dict[Text, List[Dict]] = dict()
 

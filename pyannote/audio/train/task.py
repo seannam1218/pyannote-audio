@@ -201,6 +201,9 @@ class BaseTask(pl.LightningModule):
         architecture_params = self.hparams.architecture.get("params", dict())
         self.model = ArchitectureClass(self, **architecture_params)
 
+        if training:
+            self.prepare_metadata()
+
         # EXAMPLE INPUT ARRAY (used by Pytorch Lightning to display in and out
         # sizes of each layer, for a batch of size 5)
         if "duration" in self.hparams:
@@ -222,9 +225,11 @@ class BaseTask(pl.LightningModule):
                 0,
             ).repeat(5, 1, 1)
 
+    def prepare_metadata(self):
+        pass
 
     def prepare_data(self):
-        raise NotImplementedError("")
+        pass
 
     def train_dataset(self) -> IterableDataset:
         raise NotImplementedError("")
