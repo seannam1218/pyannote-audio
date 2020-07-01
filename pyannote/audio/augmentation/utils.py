@@ -71,7 +71,7 @@ class Noise:
         preprocessors = {"audio": FileFinder(), "duration": get_audio_duration}
         for collection in self.collection:
             protocol = get_protocol(collection, preprocessors=preprocessors)
-            self.files_.extend(protocol.files())
+            self.files_.extend(dict(f) for f in protocol.files())
 
     def __call__(self, n_samples: int, sample_rate: int) -> np.ndarray:
         """Generate noise

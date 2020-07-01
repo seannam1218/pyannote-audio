@@ -76,7 +76,7 @@ class AddNoise(Augmentation):
         preprocessors = {"audio": FileFinder(), "duration": get_audio_duration}
         for collection in self.collection:
             protocol = get_protocol(collection, preprocessors=preprocessors)
-            self.files_.extend(protocol.files())
+            self.files_.extend(dict(f) for f in protocol.files())
 
     def __call__(self, original, sample_rate):
         """Augment original waveform
@@ -176,7 +176,7 @@ class AddNoiseFromGaps(Augmentation):
         else:
             protocol.preprocessors["gaps"] = get_gaps
 
-        self.files_ = list(getattr(protocol, self.subset)())
+        self.files_ = list(dict(f) for f in getattr(protocol, self.subset)())
 
     def __call__(self, original, sample_rate):
         """Augment original waveform

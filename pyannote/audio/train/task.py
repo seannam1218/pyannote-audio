@@ -188,11 +188,14 @@ class BaseTask(pl.LightningModule):
         )
 
         # TRAINING DATA
-        if files is not None:
-            self.files = files
-        elif protocol is not None:
-            self.protocol = protocol
-            self.subset = subset
+        if training:
+            if files is not None:
+                self.files = files
+            elif protocol is not None:
+                self.files = list(dict(f) for f in getattr(protocol, subset)())
+            else:
+                msg = "No training protocol available. Please provide one."
+                raise ValueError(msg)
 
         # MODEL
         ArchitectureClass = get_class_by_name(self.hparams.architecture["name"])
@@ -220,20 +223,6 @@ class BaseTask(pl.LightningModule):
                 0,
             ).repeat(5, 1, 1)
 
-    @property
-    def files(self):
-        if not hasattr(self, "files_"):
-            # load protocol files once and for all
-            if self.protocol is None:
-                msg = "No training protocol available. Please provide one."
-                raise ValueError(msg)
-            self.files_ = list(getattr(self.protocol, self.subset)())
-
-        return self.files_
-
-    @files.setter
-    def files(self, files: List[ProtocolFile]):
-        self.files_ = files
 
     def prepare_data(self):
         raise NotImplementedError("")
