@@ -170,7 +170,6 @@ class BaseTask(pl.LightningModule):
 
         # AUGMENTATION
         if training and "data_augmentation" in self.hparams:
-
             AugmentationClass = get_class_by_name(
                 self.hparams.data_augmentation["name"]
             )

@@ -113,7 +113,9 @@ class Pretrained(FeatureExtraction):
 
         checkpoint_path = train_dir / "weights" / f"epoch={epoch:04d}.ckpt"
         task = task_class.load_from_checkpoint(
-            str(checkpoint_path), map_location=lambda storage, loc: storage
+            str(checkpoint_path),
+            map_location=lambda storage, loc: storage,
+            training=False,
         )
 
         super().__init__(
