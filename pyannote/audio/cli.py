@@ -473,13 +473,10 @@ def run_validate(arg):
     config_yml = root_dir / "config.yml"
 
     start = arg["--from"]
-    if start is None:
-        start = 1
-    elif start == "last":
+    if start == "last":
         start = get_last_epoch(train_dir)
     else:
         start = int(start)
-    start = max(1, start)
 
     end = arg["--to"]
 
