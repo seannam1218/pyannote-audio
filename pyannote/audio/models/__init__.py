@@ -28,8 +28,7 @@
 
 # from .models import PyanNet, SincTDNN, ACRoPoLiS
 
+from .xvector import XVector
 from .pyannet import PyanNet
 
-__all__ = [
-    "PyanNet",
-]
+__all__ = ["PyanNet", "XVector"]

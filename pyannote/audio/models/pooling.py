@@ -147,10 +147,11 @@ class Pooling(nn.Module):
 
     Parameters
     ----------
-    method : {"last", "max", "average"}, optional
+    method : {"last", "max", "average", "stats"}, optional
         Use "max" for max pooling, "average" for average pooling.
         Use "average" for average pooling.
         Use "last" for returning the last element of the sequence.
+        Use "stats" for statistics pooling (à la x-vector).
     bidirectional : bool, optional
         When using "last" pooling, indicate whether the input sequence should
         be considered as the output of a bidirectional recurrent layer, in which
@@ -160,7 +161,7 @@ class Pooling(nn.Module):
     def __init__(
         self,
         n_features,
-        method: Literal["last", "max", "average"] = None,
+        method: Literal["last", "max", "average", "stats"] = None,
         bidirectional: bool = None,
     ):
         super().__init__()
@@ -204,7 +205,15 @@ class Pooling(nn.Module):
         if self.method == "average":
             return torch.mean(sequences, dim=1, keepdim=False, out=None)
 
+        if self.method == "stats":
+            return torch.cat(
+                (torch.mean(sequences, dim=1), torch.std(sequences, dim=1)), dim=1
+            )
+
     @property
     def dimension(self):
         "Dimension of output features"
-        return self.n_features
+        if self.method == "stats":
+            return self.n_features * 2
+        else:
+            return self.n_features
