@@ -71,6 +71,8 @@ import numpy as np
 from pyannote.core.utils.helper import get_class_by_name
 from pyannote.core import Segment
 
+from tqdm import tqdm
+
 
 class Resolution(Enum):
     FRAME = "frame"
@@ -191,7 +193,15 @@ class BaseTask(pl.LightningModule):
             if files is not None:
                 self.files = files
             elif protocol is not None:
-                self.files = list(dict(f) for f in getattr(protocol, subset)())
+                # load files lazily once to know their number
+                files = list(getattr(protocol, subset()))
+                # really load files and show a progress bar
+                for f in tqdm(
+                    iterable=files, desc="Loading training metadata", unit="file"
+                ):
+                    _ = dict(f)
+                self.files = files
+                # self.files = list(dict(f) for f in getattr(protocol, subset)())
             else:
                 msg = "No training protocol available. Please provide one."
                 raise ValueError(msg)
