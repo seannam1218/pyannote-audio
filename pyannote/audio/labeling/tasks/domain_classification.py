@@ -54,7 +54,7 @@ class Dataset(IterableDataset):
         self.task = task
 
     def __iter__(self):
-
+        random.seed()
         while True:
 
             # select one file at random (with probability proportional to its annotated duration)

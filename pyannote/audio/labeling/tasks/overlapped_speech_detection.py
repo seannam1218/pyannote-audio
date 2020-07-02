@@ -62,7 +62,7 @@ class Dataset(IterableDataset):
         self.raw_audio_ = RawAudio(sample_rate=self.task.feature_extraction.sample_rate)
 
     def __iter__(self):
-
+        random.seed()
         chunks = self.chunks()
 
         while True:

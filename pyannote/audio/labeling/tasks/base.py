@@ -40,6 +40,7 @@ class LabelingDataset(IterableDataset):
         self.task = task
 
     def __iter__(self):
+        random.seed()
 
         while True:
 

@@ -225,6 +225,11 @@ Common options
 #   and coverage.
 
 
+import pytorch_lightning as pl
+
+pl.utilities.seed.seed_everything(42)
+
+
 import yaml
 import time
 from glob import glob
@@ -249,7 +254,6 @@ from pyannote.audio.features import Precomputed
 
 from pyannote.audio.train.task import BaseTask
 
-import pytorch_lightning as pl
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
