@@ -225,17 +225,17 @@ class LibrosaMFCC(LibrosaFeatureExtraction):
     step : float, optional
         Defaults to 0.010.
     e : bool, optional
-        Energy. Defaults to True.
+        Energy. Defaults to False.
     coefs : int, optional
         Number of coefficients. Defaults to 11.
     De : bool, optional
-        Keep energy first derivative. Defaults to False.
+        Keep energy first derivative. Defaults to True.
     D : bool, optional
-        Add first order derivatives. Defaults to False.
+        Add first order derivatives. Defaults to True.
     DDe : bool, optional
-        Keep energy second derivative. Defaults to False.
+        Keep energy second derivative. Defaults to True.
     DD : bool, optional
-        Add second order derivatives. Defaults to False.
+        Add second order derivatives. Defaults to True.
 
     Notes
     -----
