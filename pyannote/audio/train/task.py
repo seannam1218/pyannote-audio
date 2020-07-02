@@ -194,7 +194,7 @@ class BaseTask(pl.LightningModule):
                 self.files = files
             elif protocol is not None:
                 # load files lazily once to know their number
-                files = list(getattr(protocol, subset()))
+                files = list(getattr(protocol, subset)())
                 # really load files and show a progress bar
                 for f in tqdm(
                     iterable=files, desc="Loading training metadata", unit="file"
