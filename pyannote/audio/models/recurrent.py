@@ -114,6 +114,8 @@ class Recurrent(nn.Module):
                     bidirectional=self.bidirectional,
                 )
 
+                rnn.flatten_parameters()
+
                 self.rnn.append(rnn)
 
         else:
@@ -126,6 +128,8 @@ class Recurrent(nn.Module):
                 dropout=self.dropout,
                 bidirectional=self.bidirectional,
             )
+
+            self.rnn.flatten_parameters()
 
     def forward(self, features: torch.Tensor, **kwargs) -> torch.Tensor:
         """Apply recurrent layer

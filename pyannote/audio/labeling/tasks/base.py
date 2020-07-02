@@ -38,7 +38,7 @@ class LabelingDataset(IterableDataset):
     def __init__(self, task: BaseTask):
         super().__init__()
         self.task = task
-
+       
     def __iter__(self):
         random.seed()
 

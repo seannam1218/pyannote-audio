@@ -226,9 +226,7 @@ Common options
 
 
 import pytorch_lightning as pl
-
 pl.utilities.seed.seed_everything(42)
-
 
 import yaml
 import time
@@ -411,7 +409,7 @@ def run_train(arg: Dict):
 
     # TODO: add a debug option that activates this parameter
     # trainer_params["fast_dev_run"] = ...
-    # trainer_params["overfit_batches"] = ...
+    #trainer_params["overfit_batches"] = 1
     # trainer_params["profiler"] = ...
     # trainer_params["limit_train_batches"] = ...
     trainer_params["weights_summary"] = "full"
