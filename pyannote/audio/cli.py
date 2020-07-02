@@ -433,7 +433,7 @@ def run_train(arg: Dict):
 
     trainer_params["max_epochs"] = 100 if arg["--to"] is None else int(arg["--to"])
 
-    trainer = pl.Trainer(**trainer_params)
+    trainer = pl.Trainer(**trainer_params, distributed_backend="ddp")
 
     num_workers = (
         multiprocessing.cpu_count()
@@ -732,3 +732,7 @@ def main():
 
     elif arg["apply"]:
         run_apply(arg)
+
+
+if __name__ == "__main__":
+    main()
