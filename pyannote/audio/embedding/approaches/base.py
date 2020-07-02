@@ -70,6 +70,7 @@ class Dataset(IterableDataset):
 
     def __iter__(self):
 
+        random.seed()
         labels = list(self.task.classes)
 
         # batch_counter counts samples in current batch.
