@@ -27,7 +27,6 @@
 # Juan Manuel Coria
 # Hervé BREDIN
 
-from typing import Union
 from pyannote.audio.train.model import Model
 from pyannote.audio.train.task import Problem
 from pyannote.audio.features import RawAudio
@@ -50,6 +49,9 @@ class XVector(Model):
             raise ValueError(msg)
 
         n_features = self.task.feature_extraction.dimension
+
+        self.normalize_ = nn.InstanceNorm1d(n_features)
+
         self.frame1_ = TDNN(
             context=[-2, 2],
             input_channels=n_features,
@@ -90,8 +92,8 @@ class XVector(Model):
         xvector : torch.Tensor
             (batch_size, 512) x-vectors.
         """
-
-        output = self.frame1_(chunks)
+        output = self.normalize_(chunks.transpose(1, 2)).transpose(1, 2)
+        output = self.frame1_(output)
         output = self.frame2_(output)
         output = self.frame3_(output)
         output = self.frame4_(output)
