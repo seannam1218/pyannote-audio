@@ -30,6 +30,7 @@ import numpy as np
 
 from pyannote.pipeline import Pipeline
 from pyannote.pipeline.parameter import Uniform
+from pyannote.pipeline.typing import Direction
 
 from pyannote.core import Timeline
 from pyannote.core import Annotation
@@ -207,9 +208,9 @@ class OverlapDetection(Pipeline):
         return _Metric()
 
     def loss(self, current_file: dict, hypothesis: Annotation) -> float:
-        """Compute (1 - recall) at target precision
+        """Compute recall at target precision
 
-        If precision < target, return 1 + (1 - precision)
+        If precision < target, return precision - target
 
         Parameters
         ----------
@@ -220,8 +221,8 @@ class OverlapDetection(Pipeline):
 
         Returns
         -------
-        error : `float`
-            1. - segment coverage.
+        recall : `float`
+            Recall
         """
 
         precision = DetectionPrecision()
@@ -240,5 +241,8 @@ class OverlapDetection(Pipeline):
         r = recall(overlap_reference, hypothesis, uem=uem)
 
         if p > self.precision:
-            return 1.0 - r
-        return 1.0 + (1.0 - p)
+            return r
+        return p - self.precision
+
+    def get_direction(self) -> Direction:
+        return "maximize" if self.fscore else "maximize"

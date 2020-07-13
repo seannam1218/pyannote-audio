@@ -33,6 +33,8 @@ from pathlib import Path
 
 from pyannote.core import Annotation
 from pyannote.pipeline import Pipeline
+from pyannote.pipeline.typing import Direction
+
 from .speaker_change_detection import SpeakerChangeDetection
 from .speech_activity_detection import SpeechActivityDetection
 from .speech_activity_detection import OracleSpeechActivityDetection
@@ -137,9 +139,9 @@ class SpeechTurnSegmentation(Pipeline):
         return speech_turns
 
     def loss(self, current_file: dict, hypothesis: Annotation) -> float:
-        """Compute (1 - coverage) at target purity
+        """Compute coverage at target purity
 
-        If purity < target, return 1 + (1 - purity)
+        If purity < target, return purity - target
 
         Parameters
         ----------
@@ -150,8 +152,8 @@ class SpeechTurnSegmentation(Pipeline):
 
         Returns
         -------
-        error : `float`
-            1. - cluster coverage.
+        coverage : `float`
+            Cluster coverage
         """
 
         metric = DiarizationPurityCoverageFMeasure()
@@ -160,6 +162,9 @@ class SpeechTurnSegmentation(Pipeline):
         _ = metric(reference, hypothesis, uem=uem)
         purity, coverage, _ = metric.compute_metrics()
         if purity > self.purity:
-            return 1.0 - coverage
+            return coverage
         else:
-            return 1.0 + (1.0 - purity)
+            return purity - self.purity
+
+    def get_direction(self) -> Direction:
+        return "maximize"

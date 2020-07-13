@@ -45,6 +45,7 @@ from .speech_turn_assignment import SpeechTurnClosestAssignment
 
 from pyannote.pipeline import Pipeline
 from pyannote.pipeline.parameter import Uniform
+from pyannote.pipeline.typing import Direction
 
 
 class SpeakerDiarization(Pipeline):
@@ -203,9 +204,9 @@ class SpeakerDiarization(Pipeline):
         # TODO. add overlap-aware resegmentation
 
     def loss(self, current_file: dict, hypothesis: Annotation) -> float:
-        """Compute (1 - coverage) at target purity
+        """Compute coverage at target purity
 
-        If purity < target, return 1 + (1 - purity)
+        If purity < target, return purity - target
 
         Parameters
         ----------
@@ -217,7 +218,7 @@ class SpeakerDiarization(Pipeline):
         Returns
         -------
         loss : `float`
-            1. - cluster coverage.
+            Cluster coverage.
         """
 
         metric = DiarizationPurityCoverageFMeasure()
@@ -226,9 +227,9 @@ class SpeakerDiarization(Pipeline):
         _ = metric(reference, hypothesis, uem=uem)
         purity, coverage, _ = metric.compute_metrics()
         if purity > self.purity:
-            return 1.0 - coverage
+            return coverage
         else:
-            return 1.0 + (1.0 - purity)
+            return purity - self.purity
 
     def get_metric(self) -> GreedyDiarizationErrorRate:
         """Return new instance of diarization error rate metric"""
@@ -239,6 +240,9 @@ class SpeakerDiarization(Pipeline):
 
         # fallbacks to using self.loss(...)
         raise NotImplementedError()
+
+    def get_direction(self) -> Direction:
+        return "minimize" if self.purity is None else "maximize"
 
 
 class Yin2018(SpeakerDiarization):

@@ -32,6 +32,7 @@ import numpy as np
 
 from pyannote.pipeline import Pipeline
 from pyannote.pipeline.parameter import Uniform
+from pyannote.pipeline.typing import Direction
 
 from pyannote.core import Annotation
 from pyannote.core import SlidingWindowFeature
@@ -151,9 +152,9 @@ class SpeakerChangeDetection(Pipeline):
         return SegmentationPurityCoverageFMeasure(tolerance=0.5, parallel=parallel)
 
     def loss(self, current_file: dict, hypothesis: Annotation) -> float:
-        """Compute (1 - coverage) at target purity
+        """Compute coverage at target purity
 
-        If purity < target, return 1 + (1 - purity)
+        If purity < target, return purity - target
 
         Parameters
         ----------
@@ -164,8 +165,8 @@ class SpeakerChangeDetection(Pipeline):
 
         Returns
         -------
-        error : `float`
-            1. - segment coverage.
+        coverage : `float`
+            Segment coverage.
         """
 
         metric = SegmentationPurityCoverageFMeasure(tolerance=0.500, beta=1)
@@ -174,6 +175,9 @@ class SpeakerChangeDetection(Pipeline):
         _ = metric(reference, hypothesis, uem=uem)
         purity, coverage, _ = metric.compute_metrics()
         if purity > self.purity:
-            return 1.0 - coverage
+            return coverage
         else:
-            return 1.0 + (1.0 - purity)
+            return purity - self.purity
+
+    def get_direction(self) -> Direction:
+        return "maximize" if self.fscore else "maximize"

@@ -33,6 +33,7 @@ import numpy as np
 
 from pyannote.pipeline import Pipeline
 from pyannote.pipeline.parameter import Uniform
+from pyannote.pipeline.typing import Direction
 
 from pyannote.core import Annotation
 from pyannote.core import SlidingWindowFeature
@@ -179,3 +180,6 @@ class SpeechActivityDetection(Pipeline):
             )
         else:
             return DetectionErrorRate(collar=0.0, skip_overlap=False, parallel=parallel)
+
+    def get_direction(self) -> Direction:
+        return "maximize" if self.fscore else "minimize"
