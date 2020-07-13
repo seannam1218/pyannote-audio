@@ -111,8 +111,7 @@ class TDNN(nn.Module):
             sequence length is the dimension of the arbitrary length data
         :return: [batch_size, len(valid_steps), output_dim]
         """
-        x = self.temporal_conv(torch.transpose(x, 1, 2))
-        return F.relu(torch.transpose(x, 1, 2))
+        return self.temporal_conv(x.transpose(1, 2)).transpose(1, 2)
 
     @staticmethod
     def check_valid_context(context: list, full_context: bool) -> None:

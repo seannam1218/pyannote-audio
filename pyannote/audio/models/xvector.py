@@ -33,6 +33,7 @@ from pyannote.audio.features import RawAudio
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from .tdnn import TDNN
 from .pooling import Pooling
 
@@ -50,7 +51,7 @@ class XVector(Model):
 
         n_features = self.task.feature_extraction.dimension
 
-        self.normalize_ = nn.InstanceNorm1d(n_features)
+        self.normalize_ = nn.InstanceNorm1d(n_features, affine=False)
 
         self.frame1_ = TDNN(
             context=[-2, 2],
@@ -58,24 +59,34 @@ class XVector(Model):
             output_channels=512,
             full_context=True,
         )
+        self.batchnorm1_ = nn.BatchNorm1d(512, momentum=0.1, affine=False)
+
         self.frame2_ = TDNN(
             context=[-2, 0, 2],
             input_channels=512,
             output_channels=512,
             full_context=False,
         )
+        self.batchnorm2_ = nn.BatchNorm1d(512, momentum=0.1, affine=False)
+
         self.frame3_ = TDNN(
             context=[-3, 0, 3],
             input_channels=512,
             output_channels=512,
             full_context=False,
         )
+        self.batchnorm3_ = nn.BatchNorm1d(512, momentum=0.1, affine=False)
+
         self.frame4_ = TDNN(
             context=[0], input_channels=512, output_channels=512, full_context=True
         )
+        self.batchnorm4_ = nn.BatchNorm1d(512, momentum=0.1, affine=False)
+
         self.frame5_ = TDNN(
             context=[0], input_channels=512, output_channels=1500, full_context=True
         )
+        self.batchnorm5_ = nn.BatchNorm1d(1500, momentum=0.1, affine=False)
+
         self.stats_pooling_ = Pooling(1500, method="stats")
         self.segment6_ = nn.Linear(3000, 512)
 
@@ -93,11 +104,21 @@ class XVector(Model):
             (batch_size, 512) x-vectors.
         """
         output = self.normalize_(chunks.transpose(1, 2)).transpose(1, 2)
-        output = self.frame1_(output)
-        output = self.frame2_(output)
-        output = self.frame3_(output)
-        output = self.frame4_(output)
-        output = self.frame5_(output)
+        output = self.batchnorm1_(
+            F.relu(self.frame1_(output)).transpose(1, 2)
+        ).transpose(1, 2)
+        output = self.batchnorm2_(
+            F.relu(self.frame2_(output)).transpose(1, 2)
+        ).transpose(1, 2)
+        output = self.batchnorm3_(
+            F.relu(self.frame3_(output)).transpose(1, 2)
+        ).transpose(1, 2)
+        output = self.batchnorm4_(
+            F.relu(self.frame4_(output)).transpose(1, 2)
+        ).transpose(1, 2)
+        output = self.batchnorm5_(
+            F.relu(self.frame5_(output)).transpose(1, 2)
+        ).transpose(1, 2)
         output = self.stats_pooling_(output)
         output = self.segment6_(output)
         return output
