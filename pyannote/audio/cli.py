@@ -523,7 +523,7 @@ def run_validate(arg):
             params = yaml.load(fp, Loader=yaml.SafeLoader)
         best_epoch = params["epoch"]
         best_value = params[criterion]
-        best_params = params["params"]
+        best_params = params.get("params", None)
     else:
         best_epoch = None
         best_value = None
