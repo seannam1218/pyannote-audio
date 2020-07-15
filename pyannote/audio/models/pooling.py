@@ -156,6 +156,9 @@ class Pooling(nn.Module):
         When using "last" pooling, indicate whether the input sequence should
         be considered as the output of a bidirectional recurrent layer, in which
         case the last element in both directions are concatenated.
+    eps : float, optional
+        When using "stats" pooling, add normally-distributed noise with mean 0
+        and variance eps, during training. Defaults to 1e-5.
     """
 
     def __init__(
@@ -163,6 +166,7 @@ class Pooling(nn.Module):
         n_features,
         method: Literal["last", "max", "average", "stats"] = None,
         bidirectional: bool = None,
+        eps: float = 1e-5,
     ):
         super().__init__()
 
@@ -173,6 +177,7 @@ class Pooling(nn.Module):
         self.n_features = n_features
         self.method = method
         self.bidirectional = bidirectional
+        self.eps = eps
 
     def forward(self, sequences: torch.Tensor) -> torch.Tensor:
         """Temporal pooling
@@ -206,9 +211,14 @@ class Pooling(nn.Module):
             return torch.mean(sequences, dim=1, keepdim=False, out=None)
 
         if self.method == "stats":
-            return torch.cat(
-                (torch.mean(sequences, dim=1), torch.std(sequences, dim=1)), dim=1
-            )
+            mu = torch.mean(sequences, dim=1)
+            if self.training:
+                noise = torch.randn_like(sequences) * self.eps
+                sigma = torch.std(sequences + noise, dim=1)
+            else:
+                sigma = torch.std(sequences, dim=1)
+
+            return torch.cat((mu, sigma), dim=1)
 
     @property
     def dimension(self):
