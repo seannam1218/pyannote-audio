@@ -230,6 +230,7 @@ pl.utilities.seed.seed_everything(42)
 
 import yaml
 import time
+import warnings
 from glob import glob
 from tqdm import tqdm, trange
 from docopt import docopt
@@ -725,6 +726,11 @@ def run_apply(arg):
 def main():
 
     arg = docopt(__doc__, version=f"pyannote-audio {__version__}")
+
+    if arg["--debug"]:
+        msg = "Debug mode is enabled, this option might slow execution considerably."
+        warnings.warn(msg, RuntimeWarning)
+        torch.autograd.set_detect_anomaly(True)
 
     if arg["train"]:
         run_train(arg)
