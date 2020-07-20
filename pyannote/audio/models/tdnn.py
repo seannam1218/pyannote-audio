@@ -46,14 +46,8 @@
 # 2018 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) (2018): 5329-5333.
 # https://www.danielpovey.com/files/2018_icassp_xvectors.pdf
 
-from typing import Optional
-
-import torch
 import torch.nn as nn
 from torch.nn.utils import weight_norm
-import torch.nn.functional as F
-
-from .pooling import StatsPool
 
 
 class TDNN(nn.Module):
@@ -80,7 +74,7 @@ class TDNN(nn.Module):
         :param output_channels: The number of channels produced by the temporal convolution
         :param full_context: Indicates whether a full context needs to be used
         """
-        super(TDNN, self).__init__()
+        super().__init__()
         self.full_context = full_context
         self.input_dim = input_channels
         self.output_dim = output_channels
@@ -138,87 +132,3 @@ class TDNN(nn.Module):
                 assert all(
                     delta[0] == delta[i] for i in range(1, len(delta))
                 ), "Intra context spacing must be equal!"
-
-
-class XVectorNet(nn.Module):
-    """
-    X-Vector neural network architecture as defined by https://www.danielpovey.com/files/2018_icassp_xvectors.pdf
-
-    Parameters
-    ----------
-    input_dim : int, default 24
-        dimension of the input frames
-    embedding_dim : int, default 512
-        dimension of latent embeddings
-    """
-
-    @property
-    def dimension(self):
-        return self.embedding_dim
-
-    def __init__(self, input_dim: int = 24, embedding_dim: int = 512):
-        super(XVectorNet, self).__init__()
-        frame1 = TDNN(
-            context=[-2, 2],
-            input_channels=input_dim,
-            output_channels=512,
-            full_context=True,
-        )
-        frame2 = TDNN(
-            context=[-2, 0, 2],
-            input_channels=512,
-            output_channels=512,
-            full_context=False,
-        )
-        frame3 = TDNN(
-            context=[-3, 0, 3],
-            input_channels=512,
-            output_channels=512,
-            full_context=False,
-        )
-        frame4 = TDNN(
-            context=[0], input_channels=512, output_channels=512, full_context=True
-        )
-        frame5 = TDNN(
-            context=[0], input_channels=512, output_channels=1500, full_context=True
-        )
-        self.tdnn = nn.Sequential(frame1, frame2, frame3, frame4, frame5, StatsPool())
-        self.segment6 = nn.Linear(3000, embedding_dim)
-        self.segment7 = nn.Linear(embedding_dim, embedding_dim)
-        self.embedding_dim = embedding_dim
-
-    def forward(self, x: torch.Tensor, return_intermediate: Optional[str] = None):
-        """Calculate X-Vector network activations.
-           Return the requested intermediate layer without computing unnecessary activations.
-
-        Parameters
-        ----------
-        x : (batch_size, n_frames, out_channels)
-            Batch of frames
-        return_intermediate : 'stats_pool' | 'segment6' | 'segment7' | None
-            If specified, return the activation of this specific layer.
-            segment6 and segment7 activations are returned before the application of non linearity.
-
-        Returns
-        -------
-        activations :
-            (batch_size, 3000)               if return_intermediate == 'stats_pool'
-            (batch_size, embedding_dim)      if return_intermediate == 'segment6' | 'segment7' | None
-        """
-
-        x = self.tdnn(x)
-
-        if return_intermediate == "stats_pool":
-            return x
-
-        x = self.segment6(x)
-
-        if return_intermediate == "segment6":
-            return x
-
-        x = self.segment7(F.relu(x))
-
-        if return_intermediate == "segment7":
-            return x
-
-        return F.relu(x)
