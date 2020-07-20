@@ -33,7 +33,6 @@ from pyannote.audio.features import RawAudio
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from .tdnn import TDNN
 from .pooling import Pooling
 
@@ -88,8 +87,13 @@ class XVector(Model):
         self.batchnorm5_ = nn.BatchNorm1d(1500, momentum=0.1, affine=False)
 
         self.stats_pooling_ = Pooling(1500, method="stats")
-        self.segment6_ = nn.Linear(3000, 512)
 
+        self.segment6_ = nn.Linear(3000, 512)
+        self.batchnorm6_ = nn.BatchNorm1d(512, momentum=0.1, affine=False)
+        
+        self.segment7_ = nn.Linear(512, 512)
+        self.batchnorm7_ = nn.BatchNorm1d(512, momentum=0.1, affine=False)
+        
     def forward(self, chunks: torch.Tensor) -> torch.Tensor:
         """Forward pass
 
@@ -105,22 +109,23 @@ class XVector(Model):
         """
         output = self.normalize_(chunks.transpose(1, 2)).transpose(1, 2)
         output = self.batchnorm1_(
-            F.relu(self.frame1_(output)).transpose(1, 2)
+            torch.relu(self.frame1_(output)).transpose(1, 2)
         ).transpose(1, 2)
         output = self.batchnorm2_(
-            F.relu(self.frame2_(output)).transpose(1, 2)
+            torch.relu(self.frame2_(output)).transpose(1, 2)
         ).transpose(1, 2)
         output = self.batchnorm3_(
-            F.relu(self.frame3_(output)).transpose(1, 2)
+            torch.relu(self.frame3_(output)).transpose(1, 2)
         ).transpose(1, 2)
         output = self.batchnorm4_(
-            F.relu(self.frame4_(output)).transpose(1, 2)
+            torch.relu(self.frame4_(output)).transpose(1, 2)
         ).transpose(1, 2)
         output = self.batchnorm5_(
-            F.relu(self.frame5_(output)).transpose(1, 2)
+            torch.relu(self.frame5_(output)).transpose(1, 2)
         ).transpose(1, 2)
         output = self.stats_pooling_(output)
-        output = self.segment6_(output)
+        output = self.batchnorm6_(torch.relu(self.segment6_(output)))
+        output = self.batchnorm7_(torch.relu(self.segment7_(output)))
         return output
 
     def get_dimension(self) -> int:
