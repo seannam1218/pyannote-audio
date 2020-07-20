@@ -204,7 +204,7 @@ Common options
                           two consecutive audio chunks [default: 0.25]
 
   --parallel=<n_workers>  Use that many workers for generating training samples.
-                          Defaults to multiprocessing.cpu_count().
+                          Defaults to half of multiprocessing.cpu_count().
 """
 
 #   For speaker change detection, validation consists in looking for the value of
@@ -439,7 +439,7 @@ def run_train(arg: Dict):
     trainer = pl.Trainer(**trainer_params, distributed_backend="ddp")
 
     num_workers = (
-        multiprocessing.cpu_count()
+        max(1, multiprocessing.cpu_count() // 2)
         if arg["--parallel"] is None
         else int(arg["--parallel"])
     )
