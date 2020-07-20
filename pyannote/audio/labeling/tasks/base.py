@@ -38,17 +38,17 @@ class LabelingDataset(IterableDataset):
     def __init__(self, task: BaseTask):
         super().__init__()
         self.task = task
-       
+
     def __iter__(self):
         random.seed()
+
+        files = self.task.train_metadata["files"]
 
         while True:
 
             # select one file at random (with probability proportional to its annotated duration)
             file, *_ = random.choices(
-                self.task.files,
-                weights=[file["_dataloader_duration"] for file in self.task.files],
-                k=1,
+                files, weights=[f["__duration"] for f in files], k=1,
             )
 
             # select one annotated region at random (with probability proportional to its duration)
@@ -68,7 +68,7 @@ class LabelingDataset(IterableDataset):
             )
 
             # extract target
-            y = file["_dataloader_target"].crop(
+            y = file["__target"].crop(
                 chunk, mode=self.task.model.alignment, fixed=self.task.hparams.duration
             )
 
@@ -76,10 +76,12 @@ class LabelingDataset(IterableDataset):
             yield {"X": X, "y": y}
 
     def __len__(self):
-        num_samples = math.ceil(
-            self.task._dataloader_duration / self.task.hparams.duration
-        )
+
+        epoch_duration = self.task.train_metadata["epoch_duration"]
+
+        num_samples = math.ceil(epoch_duration / self.task.hparams.duration)
 
         # TODO: remove when https://github.com/pytorch/pytorch/pull/38925 is released
         num_samples = max(1, num_samples // self.task.hparams.batch_size)
+
         return num_samples

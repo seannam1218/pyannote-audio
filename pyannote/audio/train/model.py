@@ -108,7 +108,6 @@ class Model(nn.Module):
         This method is called by Model.__init__ after attribute 'task' is set:
         this allows to access information about the task such as:
            - the input feature dimension (self.task.feature_extraction.dimension)
-           - the list of output classes (self.task.classes)
            - and many other details such self.task.problem, or
              self.task.resolution_{in|out}put
 
@@ -120,6 +119,16 @@ class Model(nn.Module):
         """
         msg = 'Method "init" must be overriden.'
         raise NotImplementedError(msg)
+
+    def setup(self, stage: str):
+        """Finalize model architecture
+
+        This method is called after prepare_data.
+        This allows to access information about the task such as:
+           - training metadata (self.task.train_metadata)
+           - the list of output classes (self.task.hparams.classes)
+        """
+        pass
 
     @property
     def probes(self):
@@ -358,7 +367,7 @@ class Model(nn.Module):
         try:
             dimension = self.dimension
         except AttributeError:
-            dimension = len(self.task.classes)
+            dimension = len(self.task.hparams.classes)
 
         resolution = self.resolution
 

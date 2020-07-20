@@ -31,6 +31,7 @@
 import numpy as np
 from typing import List, Dict
 from tqdm import trange
+from tqdm import tqdm
 
 from torch.utils.data import IterableDataset
 
@@ -61,23 +62,19 @@ class SpeechActivityDetection(BaseTask):
     resolution_input = Resolution.FRAME
     resolution_output = Resolution.FRAME
 
-    def get_classes(self):
-        return ["non_speech", "speech"]
-
-    def prepare_metadata(self):
+    def prepare_metadata(self, files: List[ProtocolFile]) -> Dict:
 
         output_resolution = self.model.get_resolution()
 
-        for file in self.files:
-            file["_dataloader_duration"] = sum(
-                s.duration
-                for s in file["annotated"]
-                if s.duration > self.hparams.duration
+        for f in tqdm(iterable=files, desc="Loading training metadata", unit="file"):
+
+            f["__duration"] = sum(
+                s.duration for s in f["annotated"] if s.duration > self.hparams.duration
             )
 
             y = one_hot_encoding(
-                file["annotation"],
-                Timeline(segments=[Segment(0, file["duration"])]),
+                f["annotation"],
+                Timeline(segments=[Segment(0, f["duration"])]),
                 output_resolution,
                 mode="center",
             )
@@ -86,12 +83,14 @@ class SpeechActivityDetection(BaseTask):
             y.labels = [
                 "speech",
             ]
-            file["_dataloader_target"] = y
+            f["__target"] = y
+            del f["annotation"]
 
-        # estimate what an 'epoch' is
-        self._dataloader_duration = sum(
-            file["_dataloader_duration"] for file in self.files
-        )
+        return {
+            "classes": ["non_speech", "speech"],
+            "epoch_duration": sum(f["__duration"] for f in files),
+            "files": [dict(f) for f in files],
+        }
 
     def train_dataset(self) -> IterableDataset:
         return LabelingDataset(self)
@@ -133,7 +132,7 @@ class SpeechActivityDetection(BaseTask):
 
         show_progress = {"unit": "file", "leave": False, "position": 2}
 
-        optimizer = Optimizer(pipeline, direction="maximize")
+        optimizer = Optimizer(pipeline)
         iterations = optimizer.tune_iter(
             files, warm_start=warm_start, show_progress=show_progress
         )

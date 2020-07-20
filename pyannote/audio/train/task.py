@@ -30,16 +30,6 @@
 Tasks
 #####
 
-This module provides a `Task` class meant to specify machine learning tasks
-(e.g. classification or regression).
-
-This may be used to infer parts of the network architecture and the associated
-loss function automatically.
-
-Example
--------
->>> voice_activity_detection = Task(type=TaskType.MULTI_CLASS_CLASSIFICATION,
-...                                 output=TaskOutput.SEQUENCE)
 """
 
 
@@ -67,11 +57,13 @@ import yaml
 from argparse import Namespace
 
 import math
+import pickle
 import numpy as np
 from pyannote.core.utils.helper import get_class_by_name
 from pyannote.core import Segment
 
 from tqdm import tqdm
+import warnings
 
 
 class Resolution(Enum):
@@ -154,10 +146,9 @@ class BaseTask(pl.LightningModule):
     def __init__(
         self,
         hparams: Union[Namespace, Dict],
+        train_dir: Path = None,
         protocol: Protocol = None,
         subset: Subset = "train",
-        files: List[ProtocolFile] = None,
-        training: bool = True,
         num_workers: int = None,
     ):
         super().__init__()
@@ -171,7 +162,7 @@ class BaseTask(pl.LightningModule):
         self.num_workers = num_workers
 
         # AUGMENTATION
-        if training and "data_augmentation" in self.hparams:
+        if train_dir and "data_augmentation" in self.hparams:
             AugmentationClass = get_class_by_name(
                 self.hparams.data_augmentation["name"]
             )
@@ -188,31 +179,17 @@ class BaseTask(pl.LightningModule):
             **self.hparams.feature_extraction["params"], augmentation=augmentation
         )
 
-        # TRAINING DATA
-        if training:
-            if files is not None:
-                self.files = files
-            elif protocol is not None:
-                # load files lazily once to know their number
-                files = list(getattr(protocol, subset)())
-                # really load files and show a progress bar
-                for f in tqdm(
-                    iterable=files, desc="Loading training metadata", unit="file"
-                ):
-                    _ = dict(f)
-                self.files = files
-                # self.files = list(dict(f) for f in getattr(protocol, subset)())
-            else:
-                msg = "No training protocol available. Please provide one."
-                raise ValueError(msg)
+        if train_dir is not None:
+            self.train_dir = train_dir
+
+        if protocol is not None:
+            self.protocol = protocol
+            self.subset = subset
 
         # MODEL
         ArchitectureClass = get_class_by_name(self.hparams.architecture["name"])
         architecture_params = self.hparams.architecture.get("params", dict())
         self.model = ArchitectureClass(self, **architecture_params)
-
-        if training:
-            self.prepare_metadata()
 
         # EXAMPLE INPUT ARRAY (used by Pytorch Lightning to display in and out
         # sizes of each layer, for a batch of size 5)
@@ -235,11 +212,42 @@ class BaseTask(pl.LightningModule):
                 0,
             ).repeat(5, 1, 1)
 
-    def prepare_metadata(self):
-        pass
+    def prepare_metadata(self, files: List[ProtocolFile]) -> Dict:
+        return {"files": files}
 
     def prepare_data(self):
-        pass
+
+        path = self.train_dir / "train_metadata.pkl"
+        if path.exists():
+            msg = f"Using pre-existing '{path}' file."
+            warnings.warn(msg)
+            with open(path, "rb") as f:
+                train_metadata = pickle.load(f)
+
+        else:
+            files = list(
+                tqdm(
+                    getattr(self.protocol, self.subset)(),
+                    desc="Loading training protocol",
+                    unit="file",
+                )
+            )
+            train_metadata = self.prepare_metadata(files)
+            with open(path, "wb") as f:
+                pickle.dump(train_metadata, f)
+
+        self.train_metadata = train_metadata
+
+    def setup(self, stage: str) -> None:
+
+        if stage != "fit":
+            return
+
+        path = self.train_dir / "train_metadata.pkl"
+        with open(path, "rb") as f:
+            self.train_metadata = pickle.load(f)
+        self.hparams.classes = self.train_metadata["classes"]
+        self.model.setup()
 
     def train_dataset(self) -> IterableDataset:
         raise NotImplementedError("")
@@ -249,31 +257,8 @@ class BaseTask(pl.LightningModule):
             self.train_dataset(),
             batch_size=self.hparams.batch_size,
             num_workers=self.num_workers,
+            drop_last=True,
         )
-
-    # =========================================================================
-    # CLASSES
-    # =========================================================================
-
-    @property
-    def classes(self) -> List[Text]:
-        """List of classes
-
-        Used to automatically infer the output dimension of the model
-        """
-        if "classes" not in self.hparams:
-            self.hparams.classes = self.get_classes()
-        return self.hparams.classes
-
-    def get_classes(self) -> List[Text]:
-        """Compute list of classes
-
-        Called when classes depend on the training data (e.g. for domain
-        classification experiments where we do not know in advance what
-        domains are)
-        """
-        msg = f"Class {self.__class__.__name__} must define a 'get_classes' method."
-        raise NotImplementedError(msg)
 
     # =========================================================================
     # LOSS FUNCTION

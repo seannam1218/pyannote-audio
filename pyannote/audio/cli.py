@@ -449,7 +449,11 @@ def run_train(arg: Dict):
         # initialize model with an arbitray learning rate (or lr_find will complain)
         hparams.learning_rate = 1e-3
         task = task_class(
-            hparams, protocol=protocol, subset=subset, num_workers=num_workers
+            hparams,
+            protocol=protocol,
+            subset=subset,
+            train_dir=train_dir,
+            num_workers=num_workers,
         )
 
         # suggest good learning rate
@@ -458,11 +462,15 @@ def run_train(arg: Dict):
 
         # initialize model with suggested learning rate
         hparams.learning_rate = suggested_lr
-        task = task_class(hparams, files=list(task.files), num_workers=num_workers)
+        task = task_class(hparams, train_dir=train_dir, num_workers=num_workers)
 
     else:
         task = task_class(
-            hparams, protocol=protocol, subset=subset, num_workers=num_workers
+            hparams,
+            protocol=protocol,
+            subset=subset,
+            train_dir=train_dir,
+            num_workers=num_workers,
         )
 
     trainer.fit(task)
@@ -534,7 +542,7 @@ def run_validate(arg):
     past_epoch = None
 
     # run feature extraction once and for all
-    task = task_class(hparams, training=False)
+    task = task_class(hparams)
     if not isinstance(task.feature_extraction, (Precomputed, RawAudio)):
         tqdm_files = tqdm(
             files, desc="Feature extraction", unit="file", position=0, leave=False

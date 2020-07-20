@@ -45,6 +45,7 @@ from pyannote.audio.train.task import BaseTask
 from pyannote.audio.train.task import Problem
 from pyannote.audio.train.task import Resolution
 
+from tqdm import tqdm
 from collections import Counter
 
 
@@ -55,13 +56,14 @@ class Dataset(IterableDataset):
 
     def __iter__(self):
         random.seed()
+
+        files = self.task.train_metadata["files"]
+
         while True:
 
             # select one file at random (with probability proportional to its annotated duration)
             file, *_ = random.choices(
-                self.task.files,
-                weights=[file["_dataloader_duration"] for file in self.task.files],
-                k=1,
+                files, weights=[f["__duration"] for f in files], k=1
             )
 
             # select one annotated region at random (with probability proportional to its duration)
@@ -81,15 +83,16 @@ class Dataset(IterableDataset):
             )
 
             # extract target
-            y = file["_dataloader_target"]
+            y = file["__domain"]
 
             # yield batch
             yield {"X": X, "y": y}
 
     def __len__(self):
-        num_samples = math.ceil(
-            self.task._dataloader_duration / self.task.hparams.duration
-        )
+
+        epoch_duration = self.task.train_metadata["epoch_duration"]
+
+        num_samples = math.ceil(epoch_duration / self.task.hparams.duration)
 
         # TODO: remove when https://github.com/pytorch/pytorch/pull/38925 is released
         num_samples = max(1, num_samples // self.task.hparams.batch_size)
@@ -103,24 +106,27 @@ class DomainClassification(BaseTask):
     resolution_input = Resolution.FRAME
     resolution_output = Resolution.CHUNK
 
-    def get_classes(self):
-        return sorted(set(file[self.hparams.domain] for file in self.files))
+    def prepare_metadata(self, files: List[ProtocolFile]) -> Dict:
 
-    def prepare_metadata(self):
+        # gather list of domains
+        domains = sorted(set(f[self.hparams.domain] for f in files))
 
-        for file in self.files:
-            file["_dataloader_duration"] = sum(
-                s.duration
-                for s in file["annotated"]
-                if s.duration > self.hparams.duration
+        # add __duration and __domain keys to files
+        # * __duration is the annotated duration minus too short segments
+        # * __domain is the domain index
+        for f in tqdm(iterable=files, desc="Loading training metadata", unit="file"):
+            f["__duration"] = sum(
+                s.duration for s in f["annotated"] if s.duration > self.hparams.duration
             )
+            f["__domain"] = domains.index(f[self.hparams.domain])
 
-            file["_dataloader_target"] = self.classes.index(file[self.hparams.domain])
+            del f["annotation"]
 
-        # estimate what an 'epoch' is
-        self._dataloader_duration = sum(
-            file["_dataloader_duration"] for file in self.files
-        )
+        return {
+            "classes": domains,
+            "epoch_duration": sum(f["__duration"] for f in files),
+            "files": [dict(f) for f in files],
+        }
 
     def train_dataset(self) -> IterableDataset:
         return Dataset(self)
@@ -143,7 +149,7 @@ class DomainClassification(BaseTask):
         """
 
         criterion = self.validation_criterion(protocol)
-        domains = self.classes
+        domains = self.hparams.classes
 
         y_true_file, y_pred_file = [], []
 

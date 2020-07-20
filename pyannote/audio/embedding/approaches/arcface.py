@@ -36,16 +36,12 @@ from .base import BaseSpeakerEmbedding
 
 
 class SpeakerEmbeddingArcFaceLoss(BaseSpeakerEmbedding):
-    def __init__(
-        self, hparams: Union[Namespace, Dict], **kwargs,
-    ):
-
-        super().__init__(hparams, **kwargs)
+    def setup_loss(self):
 
         if "margin" not in self.hparams:
             self.hparams.margin = 0.2
 
-        num_classes = len(self.classes)
+        num_classes = len(self.hparams.classes)
         if "scale" not in self.hparams:
             # Use scaling initialization trick from AdaCos
             # Reference: https://arxiv.org/abs/1905.00292
@@ -59,7 +55,4 @@ class SpeakerEmbeddingArcFaceLoss(BaseSpeakerEmbedding):
         )
 
     def get_loss(self):
-        def loss(fX: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-            return self.arcface_loss(fX, y)
-
-        return loss
+        return self.arcface_loss

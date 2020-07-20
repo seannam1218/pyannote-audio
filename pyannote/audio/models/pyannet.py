@@ -134,12 +134,21 @@ class PyanNet(Model):
             self.scaling = scaling
             self.scaling_ = Scaling(n_features, **scaling)
 
-        else:
+        elif "classes" in self.task.hparams:
             self.classification_ = nn.Linear(
-                n_features, len(self.task.classes), bias=True
+                n_features, len(self.task.hparams.classes), bias=True
             )
 
         self.final_activation_ = self.task.get_activation()
+
+    def setup(self):
+
+        if self.task.problem == Problem.REPRESENTATION:
+            return
+
+        self.classification_ = nn.Linear(
+            self.linear_.dimension, len(self.task.hparams.classes), bias=True
+        )
 
     def forward(self, chunks: torch.Tensor) -> torch.Tensor:
         """Forward pass
@@ -192,4 +201,4 @@ class PyanNet(Model):
         if self.task.problem == Problem.REPRESENTATION:
             return self.scaling_.dimension
 
-        return len(self.task.classes)
+        return len(self.task.hparams.classes)

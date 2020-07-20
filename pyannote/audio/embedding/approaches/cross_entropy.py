@@ -35,12 +35,10 @@ from .base import BaseSpeakerEmbedding
 
 
 class SpeakerEmbeddingCrossEntropyLoss(BaseSpeakerEmbedding):
-    def __init__(
-        self, hparams: Union[Namespace, Dict], **kwargs,
-    ):
-
-        super().__init__(hparams, **kwargs)
-        self.classifier = nn.Linear(self.model.dimension, len(self.classes), bias=False)
+    def setup_loss(self):
+        self.classifier = nn.Linear(
+            self.model.dimension, len(self.hparams.classes), bias=False
+        )
 
     def get_loss(self):
         def loss(fX: torch.Tensor, y: torch.Tensor) -> torch.Tensor:

@@ -30,7 +30,7 @@ import numpy as np
 import random
 import math
 from typing import List, Dict, Union
-from tqdm import trange
+from tqdm import trange, tqdm
 
 from torch.utils.data import IterableDataset
 
@@ -112,13 +112,13 @@ class Dataset(IterableDataset):
 
     def chunks(self):
 
+        files = self.task.train_metadata["files"]
+
         while True:
 
             # select one file at random (with probability proportional to its annotated duration)
             file, *_ = random.choices(
-                self.task.files,
-                weights=[file["_dataloader_duration"] for file in self.task.files],
-                k=1,
+                files, weights=[f["__duration"] for f in files], k=1,
             )
 
             # select one annotated region at random (with probability proportional to its duration)
@@ -138,20 +138,22 @@ class Dataset(IterableDataset):
             )
 
             # extract target
-            y = file["_dataloader_target"].crop(
+            y = file["__target"].crop(
                 chunk, mode=self.task.model.alignment, fixed=self.task.hparams.duration
             )
 
             # yield sample
-            yield {"X": X, "y": y, "labels": file["_dataloader_target"].labels}
+            yield {"X": X, "y": y, "labels": file["__target"].labels}
 
     def __len__(self):
-        num_samples = math.ceil(
-            self.task._dataloader_duration / self.task.hparams.duration
-        )
+
+        epoch_duration = self.task.train_metadata["epoch_duration"]
+
+        num_samples = math.ceil(epoch_duration / self.task.hparams.duration)
 
         # TODO: remove when https://github.com/pytorch/pytorch/pull/38925 is released
         num_samples = max(1, num_samples // self.task.hparams.batch_size)
+
         return num_samples
 
 
@@ -172,33 +174,31 @@ class OverlappedSpeechDetection(BaseTask):
         if "snr_max" not in self.hparams:
             self.hparams.snr_max = 10.0
 
-    def get_classes(self):
-        return ["non_overlap", "overlap"]
-
-    def prepare_metadata(self):
+    def prepare_metadata(self, files: List[ProtocolFile]) -> Dict:
 
         output_resolution = self.model.get_resolution()
 
-        for file in self.files:
-            file["_dataloader_duration"] = sum(
-                s.duration
-                for s in file["annotated"]
-                if s.duration > self.hparams.duration
+        for f in tqdm(iterable=files, desc="Loading training metadata", unit="file"):
+
+            f["__duration"] = sum(
+                s.duration for s in f["annotated"] if s.duration > self.hparams.duration
             )
 
             y = one_hot_encoding(
-                file["annotation"],
-                Timeline(segments=[Segment(0, file["duration"])]),
+                f["annotation"],
+                Timeline(segments=[Segment(0, f["duration"])]),
                 output_resolution,
                 mode="center",
             )
 
-            file["_dataloader_target"] = y
+            f["__target"] = y
+            del f["annotation"]
 
-        # estimate what an 'epoch' is
-        self._dataloader_duration = sum(
-            file["_dataloader_duration"] for file in self.files
-        )
+        return {
+            "classes": ["non_overlap", "overlap"],
+            "epoch_duration": sum(f["__duration"] for f in files),
+            "files": [dict(f) for f in files],
+        }
 
     def train_dataset(self) -> IterableDataset:
         return Dataset(self)
@@ -240,7 +240,7 @@ class OverlappedSpeechDetection(BaseTask):
 
         show_progress = {"unit": "file", "leave": False, "position": 2}
 
-        optimizer = Optimizer(pipeline, direction="maximize")
+        optimizer = Optimizer(pipeline)
         iterations = optimizer.tune_iter(
             files, warm_start=warm_start, show_progress=show_progress
         )

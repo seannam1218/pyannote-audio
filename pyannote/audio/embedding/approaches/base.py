@@ -27,9 +27,13 @@
 # Hervé BREDIN - http://herve.niderb.fr
 
 from typing import Dict, Text, List, Union
+from pathlib import Path
 import random
 import numpy as np
 import math
+
+from tqdm import tqdm
+import pickle
 
 from pyannote.audio.train.task import BaseTask
 from pyannote.audio.train.task import Problem
@@ -71,7 +75,7 @@ class Dataset(IterableDataset):
     def __iter__(self):
 
         random.seed()
-        labels = list(self.task.classes)
+        labels = list(self.task.train_metadata["classes"])
 
         # batch_counter counts samples in current batch.
         # as soon as it reaches batch_size, a new random duration is selected
@@ -91,7 +95,7 @@ class Dataset(IterableDataset):
                 # choose "per_label" files in which "label" occurs
                 # NOTE: probability of choosing a file is proportional
                 # to the duration of "label" in the file
-                metadata = self.task._dataloader_metadata[label]
+                metadata = self.task.train_metadata["metadata"][label]
                 metadata = random.choices(
                     metadata,
                     weights=[metadatum["duration"] for metadatum in metadata],
@@ -123,7 +127,7 @@ class Dataset(IterableDataset):
                         )
 
                         # extract target
-                        y = self.task.classes.index(label)
+                        y = self.task.hparams.classes.index(label)
 
                         yield {"X": X, "y": y}
 
@@ -142,24 +146,17 @@ class Dataset(IterableDataset):
 
     def __len__(self):
 
+        epoch_duration = self.task.train_metadata["epoch_duration"]
+
         average_chunk_duration = 0.5 * (
             self.task.hparams.min_duration + self.task.hparams.duration
         )
 
-        median_speaker_duration = np.median(
-            [
-                sum(metadatum["duration"] for metadatum in metadata)
-                for label, metadata in self.task._dataloader_metadata.items()
-            ]
-        )
-
-        num_speakers = len(self.task._dataloader_metadata)
-        num_samples = math.ceil(
-            (num_speakers * median_speaker_duration) / average_chunk_duration
-        )
+        num_samples = math.ceil(epoch_duration / average_chunk_duration)
 
         # TODO: remove when https://github.com/pytorch/pytorch/pull/38925 is released
         num_samples = max(1, num_samples // self.task.hparams.batch_size)
+
         return num_samples
 
 
@@ -170,7 +167,13 @@ class BaseSpeakerEmbedding(BaseTask):
     resolution_output = Resolution.CHUNK
 
     def __init__(
-        self, hparams: Union[Namespace, Dict], protocol: Protocol = None, **kwargs,
+        self,
+        hparams: Union[Namespace, Dict],
+        train_dir: Path = None,
+        protocol: Protocol = None,
+        subset: Subset = "train",
+        num_workers: int = None,
+        # **kwargs,
     ):
 
         if isinstance(hparams, dict):
@@ -199,7 +202,14 @@ class BaseSpeakerEmbedding(BaseTask):
         if protocol is not None:
             protocol.preprocessors["metadata"] = self.get_metadata
 
-        super().__init__(hparams, protocol=protocol, **kwargs)
+        super().__init__(
+            hparams,
+            train_dir=train_dir,
+            protocol=protocol,
+            subset=subset,
+            num_workers=num_workers,
+            # **kwargs,
+        )
 
     def get_metadata(self, file: ProtocolFile) -> Dict[Text, Dict]:
 
@@ -211,36 +221,61 @@ class BaseSpeakerEmbedding(BaseTask):
             if not segments:
                 continue
             duration = sum(s.duration for s in segments)
-            metadata[label] = {"file": file, "segments": segments, "duration": duration}
+            metadata[label] = {
+                "file": file,
+                "segments": segments,
+                "duration": duration,
+            }
 
         return metadata
 
-    def get_classes(self):
+    def prepare_metadata(self, files: List[ProtocolFile]) -> Dict:
 
-        total_duration = Counter()
+        metadata: Dict[Text, List[Dict]] = dict()
 
-        for file in self.files:
-            duration = {
-                label: metadata["duration"]
-                for label, metadata in file["metadata"].items()
-            }
-            total_duration.update(duration)
+        for f in tqdm(iterable=files, desc="Loading training metadata", unit="file"):
 
-        return sorted(
-            label
-            for label, duration in total_duration.items()
-            if duration > self.hparams.label_min_duration
-        )
+            for label, metadatum in f["metadata"].items():
+                # if label not in self.classes:
+                #     continue
+                metadatum["file"] = dict(metadatum["file"])
+                metadata.setdefault(label, []).append(metadatum)
 
-    def prepare_metadata(self):
+        # remove speakers with less than label_min_duration
+        labels = list(metadata)
+        label_durations = []
+        for label in labels:
+            label_duration = sum(metadatum["duration"] for metadatum in metadata[label])
+            if label_duration < self.hparams.label_min_duration:
+                _ = metadata.pop(label)
+            else:
+                label_durations.append(label_duration)
 
-        self._dataloader_metadata: Dict[Text, List[Dict]] = dict()
+        classes = sorted(metadata)
 
-        for file in self.files:
-            for label, metadatum in file["metadata"].items():
-                if label not in self.classes:
-                    continue
-                self._dataloader_metadata.setdefault(label, []).append(metadatum)
+        median_speaker_duration = np.median(label_durations)
+        epoch_duration = median_speaker_duration * len(classes)
+
+        return {
+            "classes": classes,
+            "epoch_duration": epoch_duration,
+            "metadata": metadata,
+        }
+
+    def setup(self, stage: str) -> None:
+
+        if stage != "fit":
+            return
+
+        path = self.train_dir / "train_metadata.pkl"
+        with open(path, "rb") as f:
+            self.train_metadata = pickle.load(f)
+        self.hparams.classes = self.train_metadata["classes"]
+        self.setup_loss()
+        # self.model.setup()
+
+    def setup_loss(self):
+        pass
 
     def train_dataset(self) -> IterableDataset:
         return Dataset(self)

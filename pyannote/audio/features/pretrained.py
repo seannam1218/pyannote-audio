@@ -111,12 +111,21 @@ class Pretrained(FeatureExtraction):
             self.epoch_ = epoch
             self.pipeline_params_ = validate_params.get("params", dict())
 
+        task = task_class(hparams)
+
         checkpoint_path = train_dir / "weights" / f"epoch={epoch:04d}.ckpt"
-        task = task_class.load_from_checkpoint(
-            str(checkpoint_path),
-            map_location=lambda storage, loc: storage,
-            training=False,
-        )
+        state_dict = torch.load(
+            checkpoint_path, map_location=lambda storage, loc: storage,
+        )["state_dict"]
+        missing_keys, unexpected_keys = task.load_state_dict(state_dict, strict=False)
+
+        # use this once strict=False option is added to load_from_checkpoint
+        # https://github.com/PyTorchLightning/pytorch-lightning/issues/2629
+        # task = task_class.load_from_checkpoint(
+        #     str(checkpoint_path),
+        #     map_location=lambda storage, loc: storage,
+        #     strict=False,
+        # )
 
         super().__init__(
             augmentation=augmentation, sample_rate=task.feature_extraction.sample_rate,

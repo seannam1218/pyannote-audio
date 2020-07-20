@@ -30,7 +30,7 @@
 
 import numpy as np
 from typing import List, Dict, Union
-from tqdm import trange
+from tqdm import trange, tqdm
 import scipy.signal
 
 from torch.utils.data import IterableDataset
@@ -70,10 +70,7 @@ class SpeakerChangeDetection(BaseTask):
         if "collar" not in self.hparams:
             self.hparams.collar = 0.1
 
-    def get_classes(self):
-        return ["non_change", "change"]
-
-    def prepare_metadata(self):
+    def prepare_metadata(self, files: List[ProtocolFile]) -> Dict:
 
         # number of samples in collar
         resolution = self.model.resolution
@@ -82,16 +79,15 @@ class SpeakerChangeDetection(BaseTask):
         # window
         window = scipy.signal.triang(collar_samples)[:, np.newaxis]
 
-        for file in self.files:
-            file["_dataloader_duration"] = sum(
-                s.duration
-                for s in file["annotated"]
-                if s.duration > self.hparams.duration
+        for f in tqdm(iterable=files, desc="Loading training metadata", unit="file"):
+
+            f["__duration"] = sum(
+                s.duration for s in f["annotated"] if s.duration > self.hparams.duration
             )
 
             orig_y = one_hot_encoding(
-                file["annotation"],
-                Timeline(segments=[Segment(0, file["duration"])]),
+                f["annotation"],
+                Timeline(segments=[Segment(0, f["duration"])]),
                 resolution,
                 mode="center",
             )
@@ -142,14 +138,14 @@ class SpeakerChangeDetection(BaseTask):
 
             y *= x_speakers
 
-            file["_dataloader_target"] = SlidingWindowFeature(
-                y, resolution, labels=["change"]
-            )
+            f["__target"] = SlidingWindowFeature(y, resolution, labels=["change"])
+            del f["annotation"]
 
-        # estimate what an 'epoch' is
-        self._dataloader_duration = sum(
-            file["_dataloader_duration"] for file in self.files
-        )
+        return {
+            "classes": ["non_change", "change"],
+            "epoch_duration": sum(f["__duration"] for f in files),
+            "files": [dict(f) for f in files],
+        }
 
     def train_dataset(self) -> IterableDataset:
         return LabelingDataset(self)
@@ -184,7 +180,7 @@ class SpeakerChangeDetection(BaseTask):
 
         show_progress = {"unit": "file", "leave": False, "position": 2}
 
-        optimizer = Optimizer(pipeline, direction="maximize")
+        optimizer = Optimizer(pipeline)
         iterations = optimizer.tune_iter(
             files, warm_start=warm_start, show_progress=show_progress
         )
