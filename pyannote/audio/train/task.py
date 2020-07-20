@@ -3,7 +3,7 @@
 
 # The MIT License (MIT)
 
-# Copyright (c) 2019 CNRS
+# Copyright (c) 2019-2020 CNRS
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -296,7 +296,7 @@ class BaseTask(pl.LightningModule):
                 y_pred: torch.Tensor, y: torch.Tensor, weight=None
             ) -> torch.Tensor:
                 return F.nll_loss(
-                    y_pred.view((-1, len(self.classes))),
+                    y_pred.view((-1, len(self.hparams.classes))),
                     y.view((-1,)),
                     weight=weight,
                     reduction="mean",
