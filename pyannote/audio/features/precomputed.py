@@ -218,7 +218,7 @@ class Precomputed:
         else:
             data = np.load(str(path))
 
-        return SlidingWindowFeature(data, self.sliding_window_)
+        return SlidingWindowFeature(data, self.sliding_window_, labels=self.classes)
 
     def crop(self, current_file, segment, mode="center", fixed=None):
         """Fast version of self(current_file).crop(segment, **kwargs)
