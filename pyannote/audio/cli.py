@@ -174,9 +174,9 @@ Common options
                           will point to the origin of it. This option can
                           considerably slow execution.
 
-  --from=<epoch>          Start training (resp. validating) at epoch <epoch>.
-                          Use --from=last to start from last available epoch at
-                          launch time. Not used for inference. [default: 0].
+  --from=<epoch>          Start training (resp. validating) at (zero-based) 
+                          epoch <epoch>. Use --from=last to start from last
+                          available epoch at launch time. 
 
   --pretrained=<model>    Warm start training with pre-trained model. Can be
                           either a path to an existing checkpoint (e.g.
@@ -185,10 +185,9 @@ Common options
                           This option can also be used to apply a pretrained
                           model. See description of <validate> for more details.
 
-  --to=<epoch>            End training (resp. validating) at epoch <epoch>.
-                          Defaults to 100 for training and to "last" for validation
-                          (i.e. validate until last available epoch at launch time).
-                          Not used for inference.
+  --to=<epoch>            End training (resp. validating) at (zero-based) epoch 
+                          <epoch>. Use --to=last to validate until last available
+                          epoch at launch time. [default: 99]
 
   --every=<epoch>         Validate model every <epoch> epochs [default: 1].
 
@@ -425,16 +424,16 @@ def run_train(arg: Dict):
     else:
         trainer_params["gpus"] = -1 if torch.cuda.is_available() else None
 
-    resume_epoch = (
-        get_last_epoch(train_dir) if arg["--from"] == "last" else int(arg["--from"])
-    )
-    if resume_epoch == 0:
+    if arg["--from"] is None:
         checkpoint = None
     else:
+        resume_epoch = (
+            get_last_epoch(train_dir) if arg["--from"] == "last" else int(arg["--from"])
+        )
         checkpoint = str(train_dir / "weights" / f"epoch={resume_epoch:04d}.ckpt")
     trainer_params["resume_from_checkpoint"] = checkpoint
 
-    trainer_params["max_epochs"] = 100 if arg["--to"] is None else int(arg["--to"])
+    trainer_params["max_epochs"] = int(arg["--to"]) + 1
 
     trainer_params["distributed_backend"] = (
         "ddp" if torch.cuda.device_count() > 1 else None
@@ -488,19 +487,18 @@ def run_validate(arg):
     config_yml = root_dir / "config.yml"
 
     start = arg["--from"]
-    if start == "last":
+    if start is None:
+        start = 0
+    elif start == "last":
         start = get_last_epoch(train_dir)
     else:
         start = int(start)
 
     end = arg["--to"]
-
-    if end is None:
-        end = 100
-    elif end == "last":
-        end = get_last_epoch(train_dir)
+    if end == "last":
+        end = get_last_epoch(train_dir) + 1
     else:
-        end = int(end)
+        end = int(end) + 1
 
     every = int(arg["--every"])
 
@@ -554,7 +552,7 @@ def run_validate(arg):
         for file in tqdm_files:
             file["features"] = task.feature_extraction(file)
 
-    pbar = trange(start, end + 1, every, unit="epoch", position=0, leave=True)
+    pbar = trange(start, end, every, unit="epoch", position=0, leave=True)
     for e, epoch in enumerate(pbar):
 
         if best_epoch is None:
