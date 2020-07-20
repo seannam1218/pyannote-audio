@@ -436,7 +436,11 @@ def run_train(arg: Dict):
 
     trainer_params["max_epochs"] = 100 if arg["--to"] is None else int(arg["--to"])
 
-    trainer = pl.Trainer(**trainer_params, distributed_backend="ddp")
+    trainer_params["distributed_backend"] = (
+        "ddp" if torch.cuda.device_count() > 1 else None
+    )
+
+    trainer = pl.Trainer(**trainer_params)
 
     num_workers = (
         max(1, multiprocessing.cpu_count() // 2)
