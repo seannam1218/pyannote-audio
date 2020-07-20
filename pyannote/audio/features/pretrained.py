@@ -200,7 +200,7 @@ class Pretrained(FeatureExtraction):
 
     @property
     def classes(self):
-        return self.task_.classes
+        return self.task_.hparams.classes
 
     def get_dimension(self) -> int:
         try:
