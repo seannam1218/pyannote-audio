@@ -201,7 +201,7 @@ class BaseTask(pl.LightningModule):
             )
             waveform = np.random.randn(num_samples, 1)
             self.example_input_array = torch.unsqueeze(
-                torch.DoubleTensor(
+                torch.FloatTensor(
                     self.feature_extraction.crop(
                         {"waveform": waveform, "duration": 2 * context + duration},
                         Segment(context, context + duration),
