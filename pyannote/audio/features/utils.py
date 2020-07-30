@@ -162,7 +162,8 @@ class RawAudio:
     def sliding_window(self):
         return self.sliding_window_
 
-    # The following function was fixed according to: https://stackoverflow.com/questions/63128049/parametererror-mono-data-must-have-shape-samples-received-shape-1-8748872
+    # The following function was fixed according to: 
+    # https://stackoverflow.com/questions/63128049/parametererror-mono-data-must-have-shape-samples-received-shape-1-8748872
     def get_features(self, y, sample_rate):
 
         # convert to mono
@@ -180,7 +181,7 @@ class RawAudio:
 
         # TODO: how time consuming is this thing (needs profiling...)
         if len(y.shape) == 1:     # Add this line
-        y = y[:,np.newaxis]   # Add this line
+            y = y[:,np.newaxis]   # Add this line
         
         try:
             valid = valid_audio(y[:, 0], mono=True)
