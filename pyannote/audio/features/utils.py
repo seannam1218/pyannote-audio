@@ -180,9 +180,8 @@ class RawAudio:
             y = self.augmentation(y, sample_rate)
 
         # TODO: how time consuming is this thing (needs profiling...)
-        if len(y.shape) == 1:     # Add this line
-            y = y[:,np.newaxis]   # Add this line
-        
+        if len(y.shape) == 1:
+            y = y[:,np.newaxis]
         try:
             valid = valid_audio(y[:, 0], mono=True)
         except ParameterError as e:
