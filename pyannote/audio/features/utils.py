@@ -162,12 +162,13 @@ class RawAudio:
     def sliding_window(self):
         return self.sliding_window_
 
+    # The following function was fixed according to: https://stackoverflow.com/questions/63128049/parametererror-mono-data-must-have-shape-samples-received-shape-1-8748872
     def get_features(self, y, sample_rate):
 
         # convert to mono
         if self.mono:
             y = np.mean(y, axis=1, keepdims=True)
-
+            y = np.squeeze(y)    # Add this line
         # resample if sample rates mismatch
         if (self.sample_rate is not None) and (self.sample_rate != sample_rate):
             y = librosa.core.resample(y.T, sample_rate, self.sample_rate).T
@@ -178,6 +179,9 @@ class RawAudio:
             y = self.augmentation(y, sample_rate)
 
         # TODO: how time consuming is this thing (needs profiling...)
+        if len(y.shape) == 1:     # Add this line
+        y = y[:,np.newaxis]   # Add this line
+        
         try:
             valid = valid_audio(y[:, 0], mono=True)
         except ParameterError as e:
