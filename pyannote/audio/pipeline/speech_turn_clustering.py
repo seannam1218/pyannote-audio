@@ -210,8 +210,10 @@ class SpeechTurnClustering(Pipeline):
         # (between -1 and -N_SKIPPED_LABELS)
         for l, label in enumerate(skipped_labels):
             mapping[label] = -(l + 1)
-
+        
+        print('mapping:\n', mapping) #added
         # do the actual mapping
+        print('speech_turns:\n:', speech_turns.rename_labels(mapping=mapping)) #added
         return speech_turns.rename_labels(mapping=mapping)
 
     def __call__(
