@@ -214,7 +214,7 @@ class SpeechTurnClustering(Pipeline):
         # do the actual mapping
         print('speech_turns:\n:', speech_turns.rename_labels(mapping=mapping)) #added
         with open('test.txt', 'w') as f:
-            f.write(speech_turns.rename_labels(mapping=mapping))
+            f.write(str(speech_turns.rename_labels(mapping=mapping)))
             print('writing successful!')
         return speech_turns.rename_labels(mapping=mapping)
 
